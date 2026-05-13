@@ -17,6 +17,10 @@ build/
 *.tmp
 *.temp
 
+# Local generated data
+*.db
+uploads/
+
 # OS / editor
 .DS_Store
 Thumbs.db
@@ -27,4 +31,3 @@ desktop.ini
 # Local environment files
 .env
 .env.*
-
