@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { scanForGlove, connectToGlove, startGloveStream, stopGloveStream, disconnectGlove, GloveSample } from '../services/bleGloveService';
 import { recordingApi } from '../api/recordingApi';
 import { predictionApi } from '../api/predictionApi';
 import { Device } from 'react-native-ble-plx';
+import { colors, radius, shadow, spacing } from '../styles/theme';
 
 const HardwareCaptureScreen = ({ route, navigation }: any) => {
   const { deviceId, gestureCode = 'HELP' } = route.params;
@@ -13,6 +15,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
   const [isRecording, setIsRecording] = useState(false);
   const [samples, setSamples] = useState<GloveSample[]>([]);
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
   
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const samplesRef = useRef<GloveSample[]>([]);
@@ -26,6 +29,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
 
   const handleScan = () => {
     setIsScanning(true);
+    setErrorMessage('');
     setStatus('Scanning...');
     scanForGlove(
       async (device) => {
@@ -36,14 +40,14 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
           setConnectedDevice(connected);
           setStatus('Connected');
         } catch (error: any) {
-          Alert.alert('Connection Error', error.message);
+          setErrorMessage(error.message);
           setStatus('Disconnected');
         }
       },
       (error) => {
         setIsScanning(false);
         setStatus('Scan Failed');
-        Alert.alert('Scan Error', error);
+        setErrorMessage(error);
       }
     );
   };
@@ -63,7 +67,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
           setSamples(samplesRef.current);
         },
         (error) => {
-          Alert.alert('Stream Error', error);
+          setErrorMessage(error);
           stopCapture();
         }
       );
@@ -74,7 +78,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
       }, 2000);
       
     } catch (error: any) {
-      Alert.alert('Capture Error', error.message);
+      setErrorMessage(error.message);
       setIsRecording(false);
     }
   };
@@ -92,10 +96,10 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
       if (capturedSamples.length > 0) {
         uploadData(capturedSamples);
       } else {
-        Alert.alert('No Data', 'No samples were collected during the 2-second window.');
+        setErrorMessage('No samples were collected.');
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      setErrorMessage(error.message);
     }
   };
 
@@ -135,7 +139,6 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
       const recording = await recordingApi.uploadJson(recordingPayload);
       const prediction = await predictionApi.createFromRecording(recording.id);
       
-      Alert.alert('Success', 'Recording uploaded successfully');
       navigation.navigate('PhraseOutput', {
         gestureId: prediction.gesture_id,
         modelLabel: prediction.model_label,
@@ -143,29 +146,53 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
       });
       
     } catch (error: any) {
-      Alert.alert('Upload Failed', error.message);
+      setErrorMessage(error.message);
       setStatus('Connected');
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Hardware Capture</Text>
-      <View style={styles.statusCard}>
-        <Text style={styles.statusLabel}>Status:</Text>
-        <Text style={[styles.statusValue, status === 'Connected' && styles.statusConnected]}>{status}</Text>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.eyebrow}>Live BLE Capture</Text>
+          <Text style={styles.title}>Glove Session</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.navigate('Main')}
+          disabled={isRecording}
+        >
+          <Text style={styles.headerButtonText}>Home</Text>
+        </TouchableOpacity>
       </View>
-      
-      <Text style={styles.infoText}>Samples Collected: {samples.length}</Text>
 
-      <View style={styles.controls}>
+      <View style={styles.content}>
+        <View style={styles.statusCard}>
+          <View>
+            <Text style={styles.statusLabel}>Connection</Text>
+            <Text style={[styles.statusValue, status === 'Connected' && styles.statusConnected]}>{status}</Text>
+          </View>
+          <View style={styles.sampleCounter}>
+            <Text style={styles.sampleCount}>{samples.length}</Text>
+            <Text style={styles.sampleLabel}>samples</Text>
+          </View>
+        </View>
+
+        {!!errorMessage && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        )}
+
+        <View style={styles.controls}>
         {!connectedDevice ? (
           <TouchableOpacity 
             style={[styles.button, isScanning && styles.buttonDisabled]} 
             onPress={handleScan}
             disabled={isScanning}
           >
-            {isScanning ? <ActivityIndicator color="white" /> : <Text style={styles.buttonText}>Scan for Glove</Text>}
+            {isScanning ? <ActivityIndicator color="white" /> : <Text style={styles.buttonText}>Scan</Text>}
           </TouchableOpacity>
         ) : (
           <>
@@ -174,7 +201,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
               onPress={startCapture}
               disabled={isRecording}
             >
-              <Text style={styles.buttonText}>{isRecording ? 'Capturing...' : 'Start 2s Capture'}</Text>
+              <Text style={styles.buttonText}>{isRecording ? 'Capturing' : 'Start Capture'}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
@@ -191,77 +218,134 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
             </TouchableOpacity>
           </>
         )}
-      </View>
+        </View>
 
-      <ScrollView style={styles.sampleList}>
-        {samples.slice(-5).map((s, i) => (
-          <Text key={i} style={styles.sampleItem}>
-            [{s.join(', ')}]
-          </Text>
-        ))}
-        {samples.length > 5 && <Text style={styles.moreText}>...and {samples.length - 5} more</Text>}
-      </ScrollView>
-    </View>
+        <View style={styles.samplePanel}>
+          <Text style={styles.panelTitle}>Latest Samples</Text>
+          <ScrollView style={styles.sampleList}>
+            {samples.slice(-5).map((s, i) => (
+              <Text key={i} style={styles.sampleItem}>
+                [{s.join(', ')}]
+              </Text>
+            ))}
+            {samples.length === 0 && <Text style={styles.emptyText}>No samples yet.</Text>}
+            {samples.length > 5 && <Text style={styles.moreText}>{samples.length - 5} earlier samples</Text>}
+          </ScrollView>
+        </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  eyebrow: {
+    color: colors.primary,
+    fontWeight: '800',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#2c3e50',
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.text,
+  },
+  headerButton: {
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  headerButtonText: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  content: {
+    flex: 1,
+    padding: spacing.lg,
   },
   statusCard: {
     flexDirection: 'row',
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radius.md,
     alignItems: 'center',
-    marginBottom: 10,
-    elevation: 2,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow,
   },
   statusLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#7f8c8d',
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textMuted,
   },
   statusValue: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 10,
-    color: '#e74c3c',
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.danger,
+    marginTop: spacing.xs,
   },
   statusConnected: {
-    color: '#2ecc71',
+    color: colors.success,
   },
-  infoText: {
-    fontSize: 16,
-    marginVertical: 10,
-    color: '#34495e',
+  sampleCounter: {
+    alignItems: 'flex-end',
+  },
+  sampleCount: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '900',
+  },
+  sampleLabel: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  errorBox: {
+    backgroundColor: '#FEE4E2',
+    borderColor: '#FDA29B',
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginTop: spacing.md,
+  },
+  errorText: {
+    color: colors.danger,
+    fontWeight: '700',
   },
   controls: {
-    marginTop: 20,
+    marginTop: spacing.lg,
   },
   button: {
-    backgroundColor: '#3498db',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: radius.sm,
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: spacing.sm,
+    minHeight: 54,
+    justifyContent: 'center',
   },
   captureButton: {
-    backgroundColor: '#e67e22',
-    height: 60,
+    backgroundColor: colors.warning,
+    height: 58,
     justifyContent: 'center',
   },
   disconnectButton: {
-    backgroundColor: '#95a5a6',
+    backgroundColor: colors.textMuted,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -269,25 +353,38 @@ const styles = StyleSheet.create({
   buttonText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
+  },
+  samplePanel: {
+    marginTop: spacing.lg,
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  panelTitle: {
+    color: colors.text,
+    fontWeight: '800',
+    marginBottom: spacing.sm,
   },
   sampleList: {
-    marginTop: 20,
     flex: 1,
-    backgroundColor: '#eee',
-    borderRadius: 10,
-    padding: 10,
   },
   sampleItem: {
     fontFamily: 'monospace',
     fontSize: 12,
-    color: '#2c3e50',
+    color: colors.text,
     marginBottom: 5,
+  },
+  emptyText: {
+    color: colors.textMuted,
+    fontSize: 14,
   },
   moreText: {
     fontSize: 12,
-    color: '#7f8c8d',
-    fontStyle: 'italic',
+    color: colors.textMuted,
     textAlign: 'center',
   }
 });

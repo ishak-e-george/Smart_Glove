@@ -1,21 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { deviceApi, DeviceCreate } from '../api/deviceApi';
+import { colors, radius, shadow, spacing } from '../styles/theme';
+
+interface DeviceItem {
+  id: number;
+  device_name: string;
+  serial_number: string;
+  device_type: string;
+}
 
 const DevicesScreen = ({ navigation }: any) => {
-  const [devices, setDevices] = useState<any[]>([]);
+  const [devices, setDevices] = useState<DeviceItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<DeviceItem | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const fetchDevices = async () => {
-    setLoading(true);
+  const fetchDevices = async (showSpinner = true) => {
+    if (showSpinner) setLoading(true);
+    setErrorMessage('');
     try {
       const data = await deviceApi.getDevices();
       setDevices(data);
     } catch (error) {
-      Alert.alert('Error', 'Failed to fetch devices');
+      setErrorMessage('Unable to load devices.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -32,76 +45,116 @@ const DevicesScreen = ({ navigation }: any) => {
 
     try {
       await deviceApi.createDevice(newDevice);
-      Alert.alert('Success', 'New device registered');
       fetchDevices();
     } catch (error) {
-      Alert.alert('Error', 'Failed to add device');
+      setErrorMessage('Unable to register a new device.');
     }
   };
 
-  const handleDevicePress = (item: any) => {
-    Alert.alert(
-      'Select Capture Mode',
-      `How would you like to capture data for ${item.device_name}?`,
-      [
-        {
-          text: 'Mock (Simulation)',
-          onPress: () => navigation.navigate('MockCapture', { deviceId: item.id }),
-        },
-        {
-          text: 'Hardware (BLE)',
-          onPress: () => navigation.navigate('HardwareCapture', { deviceId: item.id }),
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]
-    );
+  const handleDevicePress = (item: DeviceItem) => {
+    setSelectedDevice(item);
   };
 
-  const renderItem = ({ item }: { item: any }) => (
+  const openCapture = (routeName: 'MockCapture' | 'HardwareCapture') => {
+    if (!selectedDevice) return;
+    const deviceId = selectedDevice.id;
+    setSelectedDevice(null);
+    navigation.navigate(routeName, { deviceId });
+  };
+
+  const renderItem = ({ item }: { item: DeviceItem }) => (
     <TouchableOpacity 
       style={styles.deviceItem}
       onPress={() => handleDevicePress(item)}
     >
-      <View>
+      <View style={styles.deviceIcon}>
+        <Text style={styles.deviceIconText}>G</Text>
+      </View>
+      <View style={styles.deviceBody}>
         <Text style={styles.deviceName}>{item.device_name}</Text>
         <Text style={styles.deviceSerial}>{item.serial_number}</Text>
       </View>
-      <Text style={styles.chevron}>{'>'}</Text>
+      <Text style={styles.deviceType}>{item.device_type}</Text>
     </TouchableOpacity>
   );
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>My Devices</Text>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddDevice}>
-          <Text style={styles.addButtonText}>+ Add</Text>
-        </TouchableOpacity>
+        <View>
+          <Text style={styles.title}>Smart Glove</Text>
+          <Text style={styles.subtitle}>{devices.length} registered device{devices.length === 1 ? '' : 's'}</Text>
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
+            <Text style={styles.secondaryButtonText}>History</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.addButton} onPress={handleAddDevice}>
+            <Text style={styles.addButtonText}>Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
+      {!!errorMessage && (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        </View>
+      )}
+
       {loading ? (
-        <ActivityIndicator size="large" color="#3498db" style={{ marginTop: 50 }} />
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading devices</Text>
+        </View>
       ) : (
         <FlatList
           data={devices}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchDevices(false);
+              }}
+              tintColor={colors.primary}
+            />
+          }
           ListEmptyComponent={
-            <Text style={styles.emptyText}>No devices registered yet.</Text>
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No Devices</Text>
+              <Text style={styles.emptyText}>Register a glove to begin capturing gestures.</Text>
+            </View>
           }
         />
       )}
-      
-      <TouchableOpacity 
-        style={styles.historyButton}
-        onPress={() => navigation.navigate('History')}
+
+      <Modal
+        visible={!!selectedDevice}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedDevice(null)}
       >
-        <Text style={styles.historyButtonText}>View History</Text>
-      </TouchableOpacity>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modePanel}>
+            <Text style={styles.modeTitle}>{selectedDevice?.device_name}</Text>
+            <Text style={styles.modeSerial}>{selectedDevice?.serial_number}</Text>
+            <TouchableOpacity style={styles.modeButton} onPress={() => openCapture('HardwareCapture')}>
+              <Text style={styles.modeButtonTitle}>Live BLE Capture</Text>
+              <Text style={styles.modeButtonMeta}>Use the connected glove</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.modeButton} onPress={() => openCapture('MockCapture')}>
+              <Text style={styles.modeButtonTitle}>Model Smoke Test</Text>
+              <Text style={styles.modeButtonMeta}>Use trained sample data</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setSelectedDevice(null)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -109,81 +162,182 @@ const DevicesScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: 'white',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: colors.border,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: '#2c3e50',
+    fontWeight: '800',
+    color: colors.text,
+  },
+  subtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.xs,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
   },
   addButton: {
-    backgroundColor: '#3498db',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 5,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
   },
   addButtonText: {
     color: 'white',
-    fontWeight: 'bold',
+    fontWeight: '800',
+  },
+  secondaryButton: {
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  secondaryButtonText: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
+  errorBox: {
+    margin: spacing.md,
+    marginBottom: 0,
+    backgroundColor: '#FEE4E2',
+    borderWidth: 1,
+    borderColor: '#FDA29B',
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+  },
+  errorText: {
+    color: colors.danger,
+    fontWeight: '700',
   },
   listContent: {
-    padding: 15,
+    padding: spacing.md,
+    paddingBottom: spacing.xl,
   },
   deviceItem: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    marginBottom: 15,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow,
+  },
+  deviceIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  deviceIconText: {
+    color: colors.primary,
+    fontWeight: '900',
+    fontSize: 18,
+  },
+  deviceBody: {
+    flex: 1,
   },
   deviceName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#34495e',
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
   },
   deviceSerial: {
-    fontSize: 14,
-    color: '#7f8c8d',
+    fontSize: 13,
+    color: colors.textMuted,
     marginTop: 4,
   },
-  chevron: {
-    fontSize: 20,
-    color: '#bdc3c7',
-    fontWeight: 'bold',
+  deviceType: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontWeight: '700',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: spacing.xl,
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
   },
   emptyText: {
     textAlign: 'center',
-    color: '#7f8c8d',
-    marginTop: 50,
-    fontSize: 16,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    fontSize: 14,
   },
-  historyButton: {
-    margin: 20,
-    padding: 15,
-    backgroundColor: '#95a5a6',
-    borderRadius: 10,
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'flex-end',
+  },
+  modePanel: {
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
+  },
+  modeTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  modeSerial: {
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+    marginBottom: spacing.md,
+  },
+  modeButton: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surface,
+  },
+  modeButtonTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  modeButtonMeta: {
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  cancelButton: {
+    padding: spacing.md,
     alignItems: 'center',
   },
-  historyButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+  cancelButtonText: {
+    color: colors.danger,
+    fontWeight: '800',
   },
 });
 

@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { mockSensorService } from '../services/mockSensorService';
 import { recordingApi } from '../api/recordingApi';
 import { predictionApi } from '../api/predictionApi';
+import { colors, radius, shadow, spacing } from '../styles/theme';
 
 const MockCaptureScreen = ({ route, navigation }: any) => {
   const { deviceId } = route.params;
   const [capturing, setCapturing] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleCapture = async () => {
     setCapturing(true);
+    setErrorMessage('');
     
     // Simulate capture time
     setTimeout(async () => {
@@ -24,7 +27,6 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
         const recording = await recordingApi.uploadJson(mockData);
         const prediction = await predictionApi.createFromRecording(recording.id);
         
-        Alert.alert('Success', 'Gesture captured and analyzed');
         navigation.navigate('PhraseOutput', {
           gestureId: prediction.gesture_id,
           modelLabel: prediction.model_label,
@@ -32,7 +34,7 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
         });
       } catch (error) {
         console.error(error);
-        Alert.alert('Error', 'Failed to upload and analyze recording.');
+        setErrorMessage('Unable to analyze the captured recording.');
       } finally {
         setUploading(false);
       }
@@ -41,24 +43,47 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.eyebrow}>Model Smoke Test</Text>
+        <Text style={styles.title}>Capture Session</Text>
+      </View>
+
       <View style={styles.content}>
-        <Text style={styles.title}>Gesture Capture</Text>
-        <Text style={styles.description}>
-          Perform a gesture with your Smart Glove and press the button below to simulate the capture.
-        </Text>
+        <View style={styles.pipelineCard}>
+          <View style={styles.pipelineStep}>
+            <Text style={styles.stepNumber}>1</Text>
+            <Text style={styles.stepLabel}>Record</Text>
+          </View>
+          <View style={styles.pipelineDivider} />
+          <View style={styles.pipelineStep}>
+            <Text style={styles.stepNumber}>2</Text>
+            <Text style={styles.stepLabel}>Predict</Text>
+          </View>
+          <View style={styles.pipelineDivider} />
+          <View style={styles.pipelineStep}>
+            <Text style={styles.stepNumber}>3</Text>
+            <Text style={styles.stepLabel}>Translate</Text>
+          </View>
+        </View>
+
+        {!!errorMessage && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        )}
         
         <View style={styles.statusContainer}>
           {capturing && (
             <View style={styles.statusBox}>
-              <ActivityIndicator size="large" color="#e67e22" />
-              <Text style={styles.statusText}>Capturing Gesture...</Text>
+              <ActivityIndicator size="large" color={colors.warning} />
+              <Text style={styles.statusText}>Capturing</Text>
             </View>
           )}
           
           {uploading && (
             <View style={styles.statusBox}>
-              <ActivityIndicator size="large" color="#3498db" />
-              <Text style={styles.statusText}>Analyzing Data...</Text>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.statusText}>Analyzing</Text>
             </View>
           )}
           
@@ -68,7 +93,7 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
               onPress={handleCapture}
             >
               <View style={styles.innerCircle}>
-                <Text style={styles.captureButtonText}>START</Text>
+                <Text style={styles.captureButtonText}>Start</Text>
               </View>
             </TouchableOpacity>
           )}
@@ -89,28 +114,82 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
+  },
+  header: {
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  eyebrow: {
+    color: colors.primary,
+    fontWeight: '800',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.text,
   },
   content: {
     flex: 1,
-    padding: 30,
+    padding: spacing.lg,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-    marginBottom: 20,
+  pipelineCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    ...shadow,
   },
-  description: {
-    fontSize: 16,
+  pipelineStep: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  stepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceMuted,
     textAlign: 'center',
-    color: '#7f8c8d',
-    marginBottom: 50,
+    lineHeight: 28,
+    color: colors.primary,
+    fontWeight: '900',
+  },
+  stepLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+  },
+  pipelineDivider: {
+    height: 1,
+    width: 28,
+    backgroundColor: colors.border,
+  },
+  errorBox: {
+    width: '100%',
+    backgroundColor: '#FEE4E2',
+    borderColor: '#FDA29B',
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginTop: spacing.md,
+  },
+  errorText: {
+    color: colors.danger,
+    fontWeight: '700',
   },
   statusContainer: {
-    height: 250,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -118,16 +197,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statusText: {
-    marginTop: 15,
+    marginTop: spacing.md,
     fontSize: 18,
-    color: '#34495e',
-    fontWeight: '500',
+    color: colors.text,
+    fontWeight: '800',
   },
   captureButton: {
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#3498db',
+    width: 184,
+    height: 184,
+    borderRadius: 92,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 5,
@@ -137,9 +216,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
   },
   innerCircle: {
-    width: 170,
-    height: 170,
-    borderRadius: 85,
+    width: 152,
+    height: 152,
+    borderRadius: 76,
     borderWidth: 4,
     borderColor: 'rgba(255,255,255,0.3)',
     justifyContent: 'center',
@@ -147,17 +226,16 @@ const styles = StyleSheet.create({
   },
   captureButtonText: {
     color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '900',
   },
   backButton: {
-    marginTop: 50,
-    padding: 10,
+    padding: spacing.md,
   },
   backButtonText: {
-    color: '#e74c3c',
+    color: colors.danger,
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '800',
   },
 });
 

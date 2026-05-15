@@ -1,104 +1,180 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { authService } from '../services/authService';
+import { colors, radius, shadow, spacing } from '../styles/theme';
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('user@glove.com');
   const [password, setPassword] = useState('password123');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const handleLogin = async () => {
+    const trimmedEmail = email.trim();
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password');
       return;
     }
 
+    setErrorMessage('');
     setLoading(true);
     try {
-      await authService.login({ email, password });
+      await authService.login({ email: trimmedEmail, password });
       navigation.replace('Main');
     } catch (error: any) {
-      Alert.alert('Login Failed', error.response?.data?.detail || 'An error occurred during login');
+      setErrorMessage(error.response?.data?.detail || 'Unable to sign in. Check the API connection.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Smart Glove</Text>
-      <Text style={styles.subtitle}>Sign in to continue</Text>
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-      
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-      
-      <TouchableOpacity 
-        style={[styles.button, loading && styles.buttonDisabled]} 
-        onPress={handleLogin}
-        disabled={loading}
-      >
-        <Text style={styles.buttonText}>{loading ? 'Logging in...' : 'Login'}</Text>
-      </TouchableOpacity>
-    </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.brandBlock}>
+        <View style={styles.logoMark}>
+          <Text style={styles.logoText}>SG</Text>
+        </View>
+        <Text style={styles.title}>Smart Glove</Text>
+        <Text style={styles.subtitle}>Gesture recognition console</Text>
+      </View>
+
+      <View style={styles.formPanel}>
+        <Text style={styles.label}>Email</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="user@glove.com"
+          placeholderTextColor={colors.textMuted}
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+        />
+
+        <Text style={styles.label}>Password</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor={colors.textMuted}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+        />
+
+        {!!errorMessage && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading || !email.trim() || !password}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Sign In</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    padding: spacing.lg,
     justifyContent: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
+  },
+  brandBlock: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+  logoMark: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  logoText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '800',
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 34,
+    fontWeight: '800',
     textAlign: 'center',
-    color: '#2c3e50',
-    marginBottom: 10,
+    color: colors.text,
   },
   subtitle: {
-    fontSize: 18,
+    fontSize: 15,
     textAlign: 'center',
-    color: '#7f8c8d',
-    marginBottom: 40,
+    color: colors.textMuted,
+    marginTop: spacing.xs,
+  },
+  formPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadow,
+  },
+  label: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: spacing.xs,
   },
   input: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
+    backgroundColor: colors.surfaceMuted,
+    padding: spacing.md,
+    borderRadius: radius.sm,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
+    color: colors.text,
+    fontSize: 16,
   },
   button: {
-    backgroundColor: '#3498db',
-    padding: 15,
-    borderRadius: 10,
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: radius.sm,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: spacing.sm,
+    minHeight: 52,
+    justifyContent: 'center',
+  },
+  errorBox: {
+    backgroundColor: '#FEE4E2',
+    borderColor: '#FDA29B',
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '600',
   },
   buttonDisabled: {
-    backgroundColor: '#bdc3c7',
+    opacity: 0.65,
   },
   buttonText: {
     color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '800',
   },
 });
 

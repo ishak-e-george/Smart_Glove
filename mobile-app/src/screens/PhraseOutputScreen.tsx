@@ -1,22 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { phraseApi, Phrase } from '../api/phraseApi';
+import { colors, radius, shadow, spacing } from '../styles/theme';
 
 const PhraseOutputScreen = ({ route, navigation }: any) => {
   const { gestureId, modelLabel, confidence } = route.params;
   const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     const fetchPhrases = async () => {
       try {
-        // Fetch phrases for all common languages or just default
-        // For now, let's just fetch the default 'en' and maybe others if API supports
         const data = await phraseApi.getPhrasesByGesture(gestureId);
         setPhrases(data);
       } catch (error) {
-        Alert.alert('Error', 'Failed to fetch translated phrases');
+        setErrorMessage('Unable to load phrase translations.');
       } finally {
         setLoading(false);
       }
@@ -37,27 +37,38 @@ const PhraseOutputScreen = ({ route, navigation }: any) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Translation Result</Text>
+        <Text style={styles.eyebrow}>Translation</Text>
+        <Text style={styles.title}>Phrase Output</Text>
       </View>
 
       <View style={styles.content}>
         {loading ? (
-          <ActivityIndicator size="large" color="#2ecc71" style={{ marginTop: 50 }} />
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>Loading result</Text>
+          </View>
         ) : (
           <>
-            <View style={styles.gestureInfo}>
-              <Text style={styles.gestureLabel}>Predicted Gesture ID:</Text>
-              <Text style={styles.gestureValue}>{gestureId}</Text>
+            <View style={styles.resultCard}>
+              <Text style={styles.resultLabel}>Recognized Gesture</Text>
+              <Text style={styles.resultValue}>{modelLabel || `Gesture #${gestureId}`}</Text>
+              {typeof confidence === 'number' && (
+                <View style={styles.confidenceTrack}>
+                  <View style={[styles.confidenceFill, { width: `${Math.round(confidence * 100)}%` }]} />
+                </View>
+              )}
+              {typeof confidence === 'number' && (
+                <Text style={styles.confidenceText}>{Math.round(confidence * 100)}% confidence</Text>
+              )}
             </View>
-            {modelLabel && (
-              <View style={styles.predictionInfo}>
-                <Text style={styles.predictionText}>{modelLabel}</Text>
-                {typeof confidence === 'number' && (
-                  <Text style={styles.confidenceText}>{Math.round(confidence * 100)}% confidence</Text>
-                )}
+
+            {!!errorMessage && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
             )}
 
+            <Text style={styles.sectionTitle}>Available Phrases</Text>
             <FlatList
               data={phrases}
               keyExtractor={(item) => item.id.toString()}
@@ -75,7 +86,7 @@ const PhraseOutputScreen = ({ route, navigation }: any) => {
         style={styles.doneButton}
         onPress={() => navigation.navigate('Main')}
       >
-        <Text style={styles.doneButtonText}>Return to Home</Text>
+        <Text style={styles.doneButtonText}>Done</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -84,81 +95,114 @@ const PhraseOutputScreen = ({ route, navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   header: {
-    padding: 20,
-    backgroundColor: 'white',
+    padding: spacing.lg,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    alignItems: 'center',
+    borderBottomColor: colors.border,
+  },
+  eyebrow: {
+    color: colors.primary,
+    fontWeight: '800',
+    fontSize: 12,
+    textTransform: 'uppercase',
+    marginBottom: spacing.xs,
   },
   title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#2c3e50',
+    fontSize: 26,
+    fontWeight: '800',
+    color: colors.text,
   },
   content: {
     flex: 1,
-    padding: 20,
+    padding: spacing.lg,
   },
-  gestureInfo: {
-    flexDirection: 'row',
+  loadingState: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#e8f6ef',
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 20,
+  },
+  loadingText: {
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontWeight: '700',
+  },
+  resultCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: '#d1eade',
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+    ...shadow,
   },
-  gestureLabel: {
-    fontSize: 16,
-    color: '#27ae60',
-    marginRight: 10,
+  resultLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
   },
-  gestureValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#27ae60',
+  resultValue: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: '900',
+    marginTop: spacing.xs,
   },
-  predictionInfo: {
-    alignItems: 'center',
-    marginBottom: 20,
+  confidenceTrack: {
+    backgroundColor: colors.surfaceMuted,
+    height: 8,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    marginTop: spacing.md,
   },
-  predictionText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#34495e',
+  confidenceFill: {
+    backgroundColor: colors.success,
+    height: 8,
   },
   confidenceText: {
     fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 4,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontWeight: '700',
+  },
+  errorBox: {
+    backgroundColor: '#FEE4E2',
+    borderColor: '#FDA29B',
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  errorText: {
+    color: colors.danger,
+    fontWeight: '700',
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: spacing.sm,
   },
   listContent: {
-    paddingBottom: 20,
+    paddingBottom: spacing.lg,
   },
   phraseItem: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 15,
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   langBadge: {
-    backgroundColor: '#3498db',
+    backgroundColor: colors.primary,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 4,
-    marginRight: 15,
+    borderRadius: radius.sm,
+    marginRight: spacing.md,
     width: 45,
     alignItems: 'center',
   },
@@ -169,26 +213,27 @@ const styles = StyleSheet.create({
   },
   phraseText: {
     fontSize: 18,
-    color: '#34495e',
+    color: colors.text,
     flex: 1,
+    fontWeight: '700',
   },
   emptyText: {
     textAlign: 'center',
-    color: '#7f8c8d',
-    marginTop: 50,
+    color: colors.textMuted,
+    marginTop: spacing.lg,
     fontSize: 16,
   },
   doneButton: {
-    margin: 20,
-    padding: 18,
-    backgroundColor: '#2ecc71',
-    borderRadius: 10,
+    margin: spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
     alignItems: 'center',
   },
   doneButtonText: {
     color: 'white',
-    fontWeight: 'bold',
-    fontSize: 18,
+    fontWeight: '800',
+    fontSize: 16,
   },
 });
 

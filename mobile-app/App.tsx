@@ -10,6 +10,7 @@ import MockCaptureScreen from './src/screens/MockCaptureScreen';
 import HardwareCaptureScreen from './src/screens/HardwareCaptureScreen';
 import PhraseOutputScreen from './src/screens/PhraseOutputScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
+import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
 
@@ -21,11 +22,15 @@ export default function App() {
           initialRouteName="Login"
           screenOptions={{
             headerStyle: {
-              backgroundColor: '#3498db',
+              backgroundColor: colors.primary,
             },
             headerTintColor: '#fff',
             headerTitleStyle: {
               fontWeight: 'bold',
+            },
+            headerShown: false,
+            cardStyle: {
+              backgroundColor: colors.background,
             },
           }}
         >
