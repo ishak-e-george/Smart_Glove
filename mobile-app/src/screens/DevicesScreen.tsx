@@ -69,7 +69,7 @@ const DevicesScreen = ({ navigation }: any) => {
         <Text style={styles.deviceName}>{item.device_name}</Text>
         <Text style={styles.deviceSerial}>{item.serial_number}</Text>
       </View>
-      <Text style={styles.chevron}>></Text>
+      <Text style={styles.chevron}>{'>'}</Text>
     </TouchableOpacity>
   );
 

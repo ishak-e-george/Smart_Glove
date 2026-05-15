@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { mockSensorService } from '../services/mockSensorService';
 import { recordingApi } from '../api/recordingApi';
+import { predictionApi } from '../api/predictionApi';
 
 const MockCaptureScreen = ({ route, navigation }: any) => {
   const { deviceId } = route.params;
@@ -19,32 +20,19 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
       
       try {
         // Generate mock data
-        const mockData = mockSensorService.generateMockRecording('HELP', deviceId);
-        
-        // In a real app, we would save mockData to a file and get a URI
-        // For this mock implementation, we'll use a placeholder URI
-        // and assume the recordingApi or backend can handle it for demo purposes
-        const dummyFileUri = 'file://mock/recording.json';
-        
-        const details = {
-          sample_rate: mockData.sample_rate,
-          duration_ms: mockData.duration_ms,
-          sensor_count: mockData.sensor_count,
-        };
-
-        const result = await recordingApi.upload(dummyFileUri, deviceId, details);
-        
-        // Assume the upload triggers prediction and returns the gesture_id
-        // or we use a default for demo if not present
-        const gestureId = result.gesture_id || 1; 
+        const mockData = mockSensorService.generateMockRecording('BOTH_BENT', deviceId);
+        const recording = await recordingApi.uploadJson(mockData);
+        const prediction = await predictionApi.createFromRecording(recording.id);
         
         Alert.alert('Success', 'Gesture captured and analyzed');
-        navigation.navigate('PhraseOutput', { gestureId: gestureId });
+        navigation.navigate('PhraseOutput', {
+          gestureId: prediction.gesture_id,
+          modelLabel: prediction.model_label,
+          confidence: prediction.confidence,
+        });
       } catch (error) {
         console.error(error);
-        Alert.alert('Error', 'Failed to upload recording. (Note: Mock upload requires real file system in some environments)');
-        // For demo purposes, let's allow navigation even if upload fails
-        // navigation.navigate('PhraseOutput', { gestureId: 1 });
+        Alert.alert('Error', 'Failed to upload and analyze recording.');
       } finally {
         setUploading(false);
       }

@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_db, get_current_user
 from app.core.roles import has_access
 from app.models.user import User
-from app.schemas.recording import RecordingOut, RecordingUpdate, RecordingCreate
+from app.repositories.device_repository import device_repository
+from app.schemas.recording import RecordingOut, RecordingUpdate, RecordingCreate, RecordingJsonUpload
 from app.services.recording_service import recording_service
 
 router = APIRouter()
@@ -22,6 +23,12 @@ def upload_recording(
     sensor_count: Optional[int] = Form(None),
     current_user: User = Depends(get_current_user)
 ) -> Any:
+    device = device_repository.get(db, id=device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not has_access(current_user, device.user_id):
+        raise HTTPException(status_code=403, detail="Not enough privileges for this device")
+
     recording_in = RecordingCreate(
         device_id=device_id,
         gesture_id=gesture_id,
@@ -31,6 +38,25 @@ def upload_recording(
     )
     return recording_service.upload_recording(
         db, file=file, recording_in=recording_in, user_id=current_user.id
+    )
+
+@router.post("/upload-json", response_model=RecordingOut)
+def upload_recording_json(
+    *,
+    db: Session = Depends(get_db),
+    payload: RecordingJsonUpload,
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    device = device_repository.get(db, id=payload.device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not has_access(current_user, device.user_id):
+        raise HTTPException(status_code=403, detail="Not enough privileges for this device")
+
+    return recording_service.upload_recording_payload(
+        db,
+        payload=payload,
+        user_id=current_user.id,
     )
 
 @router.get("/", response_model=List[RecordingOut])

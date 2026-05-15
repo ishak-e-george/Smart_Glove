@@ -1,4 +1,5 @@
 import os
+import json
 import shutil
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,14 @@ def save_recording_file(file: UploadFile, user_id: int) -> str:
     with file_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     
+    return str(file_path)
+
+def save_recording_payload(payload: dict[str, Any], user_id: int) -> str:
+    user_upload_dir = UPLOAD_DIR / str(user_id)
+    os.makedirs(user_upload_dir, exist_ok=True)
+
+    file_path = user_upload_dir / f"{uuid.uuid4()}_recording.json"
+    file_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return str(file_path)
 
 def delete_recording_file(file_path: str) -> None:

@@ -7,7 +7,7 @@ from app.repositories.recording_repository import recording_repository
 from app.services import storage_service
 from app.core.roles import Role
 from app.models.recording import Recording
-from app.schemas.recording import RecordingCreate, RecordingUpdate
+from app.schemas.recording import RecordingCreate, RecordingJsonUpload, RecordingUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,31 @@ class RecordingService:
                 db, obj_in=recording_in, user_id=user_id, file_path=file_path
             )
             return recording
+        except Exception as e:
+            logger.error(f"Failed to create recording record in DB, cleaning up file: {file_path}. Error: {e}")
+            storage_service.delete_recording_file(file_path)
+            raise e
+
+    def upload_recording_payload(
+        self,
+        db: Session,
+        payload: RecordingJsonUpload,
+        user_id: int
+    ) -> Recording:
+        payload_data = payload.model_dump()
+        file_path = storage_service.save_recording_payload(payload_data, user_id)
+        recording_in = RecordingCreate(
+            device_id=payload.device_id,
+            gesture_id=payload.gesture_id,
+            sample_rate=payload.sample_rate,
+            duration_ms=payload.duration_ms,
+            sensor_count=payload.sensor_count,
+        )
+
+        try:
+            return recording_repository.create_with_owner(
+                db, obj_in=recording_in, user_id=user_id, file_path=file_path
+            )
         except Exception as e:
             logger.error(f"Failed to create recording record in DB, cleaning up file: {file_path}. Error: {e}")
             storage_service.delete_recording_file(file_path)

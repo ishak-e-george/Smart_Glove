@@ -35,6 +35,55 @@ def test_upload_recording(client: TestClient, db: Session, test_user):
     assert response.json()["user_id"] == test_user.id
     assert response.json()["file_path"] == "mock/path.json"
 
+def test_upload_recording_json(client: TestClient, db: Session, test_user):
+    device = Device(device_name="D1", serial_number="SN_REC_JSON", device_type="glove", user_id=test_user.id)
+    db.add(device)
+    db.commit()
+
+    headers = get_auth_headers(test_user)
+    payload = {
+        "device_id": device.id,
+        "gesture_code": "HELP",
+        "sample_rate": 50,
+        "duration_ms": 2000,
+        "sensor_count": 6,
+        "samples": [[1, 2, 3, 4, 5, 6], [2, 3, 4, 5, 6, 7]],
+    }
+
+    with patch("app.services.recording_service.storage_service.save_recording_payload", return_value="mock/json-path.json"):
+        response = client.post(
+            f"{settings.API_V1_STR}/recordings/upload-json",
+            json=payload,
+            headers=headers,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == test_user.id
+    assert response.json()["file_path"] == "mock/json-path.json"
+    assert response.json()["sample_rate"] == 50
+
+def test_user_cannot_upload_recording_to_others_device(client: TestClient, db: Session, test_user, test_admin):
+    device = Device(device_name="D1", serial_number="SN_REC_OTHER", device_type="glove", user_id=test_admin.id)
+    db.add(device)
+    db.commit()
+
+    headers = get_auth_headers(test_user)
+    payload = {
+        "device_id": device.id,
+        "sample_rate": 50,
+        "duration_ms": 2000,
+        "sensor_count": 6,
+        "samples": [[1, 2, 3, 4, 5, 6]],
+    }
+
+    response = client.post(
+        f"{settings.API_V1_STR}/recordings/upload-json",
+        json=payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+
 def test_label_recording(client: TestClient, db: Session, test_user):
     device = Device(device_name="D1", serial_number="SN_REC_2", device_type="glove", user_id=test_user.id)
     db.add(device)

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView } from 'react-native';
 import { scanForGlove, connectToGlove, startGloveStream, stopGloveStream, disconnectGlove, GloveSample } from '../services/bleGloveService';
 import { recordingApi } from '../api/recordingApi';
+import { predictionApi } from '../api/predictionApi';
 import { Device } from 'react-native-ble-plx';
 
 const HardwareCaptureScreen = ({ route, navigation }: any) => {
@@ -14,6 +15,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
   const [connectedDevice, setConnectedDevice] = useState<Device | null>(null);
   
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const samplesRef = useRef<GloveSample[]>([]);
 
   useEffect(() => {
     return () => {
@@ -49,6 +51,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
   const startCapture = async () => {
     if (!connectedDevice) return;
     
+    samplesRef.current = [];
     setSamples([]);
     setIsRecording(true);
     setStatus('Streaming Data...');
@@ -56,7 +59,8 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
     try {
       await startGloveStream(
         (sample) => {
-          setSamples((prev) => [...prev, sample]);
+          samplesRef.current = [...samplesRef.current, sample];
+          setSamples(samplesRef.current);
         },
         (error) => {
           Alert.alert('Stream Error', error);
@@ -84,8 +88,9 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
       await stopGloveStream();
       setStatus('Stopped');
       
-      if (samples.length > 0) {
-        uploadData();
+      const capturedSamples = samplesRef.current;
+      if (capturedSamples.length > 0) {
+        uploadData(capturedSamples);
       } else {
         Alert.alert('No Data', 'No samples were collected during the 2-second window.');
       }
@@ -94,31 +99,48 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const uploadData = async () => {
+  const toModelFeatureSamples = (capturedSamples: GloveSample[]) => {
+    return capturedSamples
+      .filter((sample) => sample.length >= 2)
+      .map((sample) => {
+        const indexRaw = sample[0];
+        const middleRaw = sample[1];
+        const indexPercent = Math.max(0, Math.min(100, Math.round(((indexRaw - 300) / 400) * 100)));
+        const middlePercent = Math.max(0, Math.min(100, Math.round(((middleRaw - 300) / 400) * 100)));
+
+        return [
+          indexRaw,
+          indexRaw,
+          indexPercent,
+          middleRaw,
+          middleRaw,
+          middlePercent,
+        ];
+      });
+  };
+
+  const uploadData = async (capturedSamples: GloveSample[]) => {
     setStatus('Uploading...');
     try {
-      // Create a temporary "file" representation for the recordingApi
-      // In a real app, you might save this to a local file first
-      // But our current recordingApi expects a fileUri or handles it via FormData
-      
+      const featureSamples = toModelFeatureSamples(capturedSamples);
       const recordingPayload = {
         device_id: deviceId,
         gesture_code: gestureCode,
         sample_rate: 50,
         duration_ms: 2000,
-        sensor_count: 5,
-        samples: samples
+        sensor_count: 6,
+        samples: featureSamples
       };
 
-      // Since recordingApi.upload expects a fileUri, we might need a general method
-      // For now, let's assume we use a specialized method or adjust the API
-      // Actually, let's just use the client directly here for simplicity
-      // or assume recordingApi has a 'createFromData' method
-      
-      const response = await recordingApi.upload('data:application/json;base64,' + btoa(JSON.stringify(recordingPayload)), deviceId, recordingPayload);
+      const recording = await recordingApi.uploadJson(recordingPayload);
+      const prediction = await predictionApi.createFromRecording(recording.id);
       
       Alert.alert('Success', 'Recording uploaded successfully');
-      navigation.navigate('PhraseOutput', { gestureId: response.gesture_id || 1 });
+      navigation.navigate('PhraseOutput', {
+        gestureId: prediction.gesture_id,
+        modelLabel: prediction.model_label,
+        confidence: prediction.confidence,
+      });
       
     } catch (error: any) {
       Alert.alert('Upload Failed', error.message);
@@ -160,6 +182,7 @@ const HardwareCaptureScreen = ({ route, navigation }: any) => {
               onPress={() => {
                 disconnectGlove();
                 setConnectedDevice(null);
+                samplesRef.current = [];
                 setStatus('Disconnected');
                 setSamples([]);
               }}

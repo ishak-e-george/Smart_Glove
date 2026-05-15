@@ -4,8 +4,8 @@ export interface Phrase {
   id: number;
   gesture_id: number;
   language_code: string;
-  phrase_text: string;
-  is_default: boolean;
+  text_value: string;
+  audio_url?: string;
 }
 
 export const phraseApi = {

@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { phraseApi, Phrase } from '../api/phraseApi';
 
 const PhraseOutputScreen = ({ route, navigation }: any) => {
-  const { gestureId } = route.params;
+  const { gestureId, modelLabel, confidence } = route.params;
   const [phrases, setPhrases] = useState<Phrase[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -30,7 +30,7 @@ const PhraseOutputScreen = ({ route, navigation }: any) => {
       <View style={styles.langBadge}>
         <Text style={styles.langText}>{item.language_code.toUpperCase()}</Text>
       </View>
-      <Text style={styles.phraseText}>{item.phrase_text}</Text>
+      <Text style={styles.phraseText}>{item.text_value}</Text>
     </View>
   );
 
@@ -49,6 +49,14 @@ const PhraseOutputScreen = ({ route, navigation }: any) => {
               <Text style={styles.gestureLabel}>Predicted Gesture ID:</Text>
               <Text style={styles.gestureValue}>{gestureId}</Text>
             </View>
+            {modelLabel && (
+              <View style={styles.predictionInfo}>
+                <Text style={styles.predictionText}>{modelLabel}</Text>
+                {typeof confidence === 'number' && (
+                  <Text style={styles.confidenceText}>{Math.round(confidence * 100)}% confidence</Text>
+                )}
+              </View>
+            )}
 
             <FlatList
               data={phrases}
@@ -114,6 +122,20 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
     color: '#27ae60',
+  },
+  predictionInfo: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  predictionText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#34495e',
+  },
+  confidenceText: {
+    fontSize: 14,
+    color: '#7f8c8d',
+    marginTop: 4,
   },
   listContent: {
     paddingBottom: 20,

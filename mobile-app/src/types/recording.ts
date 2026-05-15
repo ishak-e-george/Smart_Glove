@@ -11,6 +11,18 @@ export interface RecordingData {
   samples: number[][];
 }
 
+export interface RecordingUploadResponse {
+  id: number;
+  user_id: number;
+  device_id: number;
+  gesture_id?: number;
+  file_path: string;
+  sample_rate: number;
+  duration_ms: number;
+  sensor_count: number;
+  created_at: string;
+}
+
 export interface Recording {
   id: number;
   device_id: number;
@@ -36,4 +48,11 @@ export interface PredictionResponse {
   confidence: number;
   source_type: string;
   created_at: string;
+}
+
+export interface RecordingPredictionResponse {
+  prediction_id: number;
+  gesture_id: number;
+  model_label: string;
+  confidence: number;
 }

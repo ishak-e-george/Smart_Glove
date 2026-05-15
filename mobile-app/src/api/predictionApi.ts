@@ -1,5 +1,5 @@
 import client from './client';
-import { PredictionRequest, PredictionResponse } from '../types/recording';
+import { PredictionRequest, PredictionResponse, RecordingPredictionResponse } from '../types/recording';
 
 export const predictionApi = {
   createPrediction: async (data: PredictionRequest): Promise<PredictionResponse> => {
@@ -13,6 +13,11 @@ export const predictionApi = {
         device_id: deviceId,
       },
     });
+    return response.data;
+  },
+
+  createFromRecording: async (recordingId: number): Promise<RecordingPredictionResponse> => {
+    const response = await client.post(`/predictions/from-recording/${recordingId}`);
     return response.data;
   },
 };

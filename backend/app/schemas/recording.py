@@ -23,6 +23,15 @@ class RecordingBase(BaseModel):
 class RecordingCreate(RecordingBase):
     device_id: int
 
+class RecordingJsonUpload(BaseModel):
+    device_id: int
+    gesture_id: Optional[int] = None
+    gesture_code: Optional[str] = None
+    sample_rate: int = Field(..., gt=0)
+    duration_ms: int = Field(..., gt=0)
+    sensor_count: int = Field(..., gt=0)
+    samples: list[list[float]]
+
 # Properties to receive via API on update (labeling)
 class RecordingUpdate(BaseModel):
     gesture_id: Optional[int] = None

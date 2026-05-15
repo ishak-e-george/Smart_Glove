@@ -1,4 +1,5 @@
 import client from './client';
+import { RecordingData, RecordingUploadResponse } from '../types/recording';
 
 export const recordingApi = {
   upload: async (fileUri: string, deviceId: number, details: any) => {
@@ -19,6 +20,11 @@ export const recordingApi = {
         'Content-Type': 'multipart/form-data',
       },
     });
+    return response.data;
+  },
+
+  uploadJson: async (recording: RecordingData): Promise<RecordingUploadResponse> => {
+    const response = await client.post('/recordings/upload-json', recording);
     return response.data;
   },
   
