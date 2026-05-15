@@ -34,6 +34,9 @@ def seed():
         catalog = [
             ("HELP", "Help Needed", {"en": "I need help", "ar": "أنا بحاجة للمساعدة", "fr": "J'ai besoin d'aide"}),
             ("WATER", "Thirsty", {"en": "I need water", "ar": "أريد ماء", "fr": "Je veux de l'eau"}),
+            ("YES", "Yes", {"en": "Yes", "ar": "نعم", "fr": "Oui"}),
+            ("NO", "No", {"en": "No", "ar": "لا", "fr": "Non"}),
+            ("REST", "Rest", {"en": "", "ar": "", "fr": ""}),
             ("PAIN", "In Pain", {"en": "I am in pain", "ar": "أشعر بالألم", "fr": "J'ai mal"}),
         ]
 
@@ -41,7 +44,12 @@ def seed():
             g = gesture_repository.get_by_code(db, code=code)
             if not g:
                 g = gesture_repository.create(db, obj_in=GestureCreate(code=code, display_name=name))
-                for lang, text in translations.items():
+            existing_languages = {
+                phrase.language_code
+                for phrase in phrase_repository.get_by_gesture(db, gesture_id=g.id)
+            }
+            for lang, text in translations.items():
+                if lang not in existing_languages:
                     phrase_repository.create(db, obj_in=PhraseCreate(
                         gesture_id=g.id, language_code=lang, text_value=text
                     ))
