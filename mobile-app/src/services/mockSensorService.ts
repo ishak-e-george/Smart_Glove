@@ -10,30 +10,38 @@ export const mockSensorService = {
     const durationMs = 2000;
     const numSamples = (durationMs / 1000) * sampleRate;
     const sensorCount = 6;
-    const profileByGesture: Record<string, [number, number]> = {
-      REST: [8, 8],
-      INDEX_BENT: [78, 12],
-      MIDDLE_BENT: [12, 78],
-      BOTH_BENT: [82, 82],
-      INDEX_HALF: [48, 12],
+    const profileByGesture: Record<string, [number, number, number, number, number, number]> = {
+      REST: [1764, 1763, 2, 1913, 1912, 6],
+      INDEX_BENT: [1549, 1545, 70, 1912, 1909, 7],
+      MIDDLE_BENT: [1733, 1735, 5, 1870, 1870, 47],
     };
-    const [indexTarget, middleTarget] = profileByGesture[gestureCode] ?? profileByGesture.BOTH_BENT;
+    const [
+      indexRawTarget,
+      indexSmoothTarget,
+      indexPercentTarget,
+      middleRawTarget,
+      middleSmoothTarget,
+      middlePercentTarget,
+    ] =
+      profileByGesture[gestureCode] ?? profileByGesture.INDEX_BENT;
     
     const samples: number[][] = [];
     
     for (let i = 0; i < numSamples; i++) {
       const noise = Math.sin(i * 0.33) * 3;
-      const indexPercent = Math.max(0, Math.min(100, Math.round(indexTarget + noise)));
-      const middlePercent = Math.max(0, Math.min(100, Math.round(middleTarget - noise)));
-      const indexRaw = Math.round(300 + indexPercent * 4);
-      const middleRaw = Math.round(300 + middlePercent * 4);
+      const indexRaw = Math.round(indexRawTarget + noise);
+      const indexSmooth = Math.round(indexSmoothTarget + noise);
+      const middleRaw = Math.round(middleRawTarget - noise);
+      const middleSmooth = Math.round(middleSmoothTarget - noise);
+      const indexPercent = Math.max(0, Math.min(100, Math.round(indexPercentTarget + noise)));
+      const middlePercent = Math.max(0, Math.min(100, Math.round(middlePercentTarget - noise)));
 
       samples.push([
         indexRaw,
-        indexRaw,
+        indexSmooth,
         indexPercent,
         middleRaw,
-        middleRaw,
+        middleSmooth,
         middlePercent,
       ]);
     }

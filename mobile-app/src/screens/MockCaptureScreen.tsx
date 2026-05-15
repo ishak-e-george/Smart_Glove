@@ -20,7 +20,7 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
       
       try {
         // Generate mock data
-        const mockData = mockSensorService.generateMockRecording('BOTH_BENT', deviceId);
+        const mockData = mockSensorService.generateMockRecording('INDEX_BENT', deviceId);
         const recording = await recordingApi.uploadJson(mockData);
         const prediction = await predictionApi.createFromRecording(recording.id);
         
