@@ -11,3 +11,6 @@ pydantic-settings
 python-multipart
 python-logging-loki
 numpy
+joblib
+pandas
+scikit-learn
