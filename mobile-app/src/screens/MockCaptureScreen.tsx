@@ -6,11 +6,33 @@ import { recordingApi } from '../api/recordingApi';
 import { predictionApi } from '../api/predictionApi';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
+const SUPPORTED_GESTURES = [
+  {
+    code: 'INDEX_BENT',
+    title: 'Index Bend',
+    phrase: 'Yes',
+    detail: 'Trained sample from the current 2-finger model.',
+  },
+  {
+    code: 'MIDDLE_BENT',
+    title: 'Middle Bend',
+    phrase: 'No',
+    detail: 'Trained sample from the current 2-finger model.',
+  },
+  {
+    code: 'REST',
+    title: 'Rest',
+    phrase: 'Silent',
+    detail: 'Neutral hand position used as the baseline class.',
+  },
+];
+
 const MockCaptureScreen = ({ route, navigation }: any) => {
   const { deviceId } = route.params;
   const [capturing, setCapturing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [selectedGesture, setSelectedGesture] = useState(SUPPORTED_GESTURES[0]);
 
   const handleCapture = async () => {
     setCapturing(true);
@@ -23,7 +45,7 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
       
       try {
         // Generate mock data
-        const mockData = mockSensorService.generateMockRecording('INDEX_BENT', deviceId);
+        const mockData = mockSensorService.generateMockRecording(selectedGesture.code, deviceId);
         const recording = await recordingApi.uploadJson(mockData);
         const prediction = await predictionApi.createFromRecording(recording.id);
         
@@ -44,11 +66,37 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>Model Smoke Test</Text>
-        <Text style={styles.title}>Capture Session</Text>
+        <Text style={styles.eyebrow}>Software Capture</Text>
+        <Text style={styles.title}>Gesture Sample</Text>
       </View>
 
       <View style={styles.content}>
+        <View style={styles.gesturePicker}>
+          {SUPPORTED_GESTURES.map((gesture) => {
+            const selected = gesture.code === selectedGesture.code;
+            return (
+              <TouchableOpacity
+                key={gesture.code}
+                style={[styles.gestureOption, selected && styles.gestureOptionSelected]}
+                onPress={() => setSelectedGesture(gesture)}
+                disabled={capturing || uploading}
+              >
+                <View style={styles.gestureOptionHeader}>
+                  <Text style={[styles.gestureTitle, selected && styles.gestureTitleSelected]}>
+                    {gesture.title}
+                  </Text>
+                  <Text style={[styles.gesturePhrase, selected && styles.gesturePhraseSelected]}>
+                    {gesture.phrase}
+                  </Text>
+                </View>
+                <Text style={[styles.gestureDetail, selected && styles.gestureDetailSelected]}>
+                  {gesture.detail}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         <View style={styles.pipelineCard}>
           <View style={styles.pipelineStep}>
             <Text style={styles.stepNumber}>1</Text>
@@ -149,6 +197,51 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     ...shadow,
+  },
+  gesturePicker: {
+    width: '100%',
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  gestureOption: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  gestureOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: '#EAF4F7',
+  },
+  gestureOptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  gestureTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  gestureTitleSelected: {
+    color: colors.primaryDark,
+  },
+  gesturePhrase: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  gesturePhraseSelected: {
+    color: colors.primary,
+  },
+  gestureDetail: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  gestureDetailSelected: {
+    color: colors.primaryDark,
   },
   pipelineStep: {
     alignItems: 'center',
