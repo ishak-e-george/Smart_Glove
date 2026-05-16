@@ -40,6 +40,24 @@ def test_read_model_status(client: TestClient, test_user, monkeypatch):
     assert response.status_code == 200
     assert response.json()["trained_model"]["feature_set"] == "2"
 
+def test_read_model_evaluation(client: TestClient, test_user, monkeypatch):
+    headers = get_auth_headers(test_user)
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.datasets.model_evaluation_service.evaluate_current_model",
+        lambda: {
+            "status": "ready",
+            "accuracy": 0.95,
+            "labels": ["REST", "INDEX_BENT"],
+            "confusion_matrix": [[10, 0], [1, 9]],
+        },
+    )
+
+    response = client.get(f"{settings.API_V1_STR}/datasets/status/evaluation", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["accuracy"] == 0.95
+
 def test_export_recordings_training_data(client: TestClient, db: Session, test_user):
     device = Device(device_name="D1", serial_number="SN_EXPORT", device_type="glove", user_id=test_user.id)
     db.add(device)

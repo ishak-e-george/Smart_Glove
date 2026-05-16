@@ -14,6 +14,7 @@ from app.schemas.dataset import (
     DatasetOutWithItems
 )
 from app.services.dataset_service import dataset_service
+from app.services.model_evaluation_service import model_evaluation_service
 from app.services.model_status_service import model_status_service
 
 from app.services.dataset_export_service import dataset_export_service
@@ -36,6 +37,12 @@ def export_recordings_training_data(
         user_id=current_user.id,
         role=current_user.role,
     )
+
+@router.get("/status/evaluation", response_model=Dict[str, Any])
+def read_model_evaluation(
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    return model_evaluation_service.evaluate_current_model()
 
 @router.get("/{id}/export", response_model=Dict[str, Any])
 def export_dataset(

@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { modelEvaluationApi, ModelEvaluation } from '../api/modelEvaluationApi';
 import { modelStatusApi, ModelStatus, ReadyLabel } from '../api/modelStatusApi';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
 const ModelStatusScreen = ({ navigation }: any) => {
   const [status, setStatus] = useState<ModelStatus | null>(null);
+  const [evaluation, setEvaluation] = useState<ModelEvaluation | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -13,8 +15,12 @@ const ModelStatusScreen = ({ navigation }: any) => {
     setLoading(true);
     setErrorMessage('');
     try {
-      const data = await modelStatusApi.getStatus();
+      const [data, evaluationData] = await Promise.all([
+        modelStatusApi.getStatus(),
+        modelEvaluationApi.getEvaluation(),
+      ]);
       setStatus(data);
+      setEvaluation(evaluationData);
     } catch {
       setErrorMessage('Unable to load model status from the backend.');
     } finally {
@@ -67,6 +73,43 @@ const ModelStatusScreen = ({ navigation }: any) => {
                   </Text>
                 )}
                 {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+              </View>
+              <View style={styles.evaluationCard}>
+                <View>
+                  <Text style={styles.summaryLabel}>Model evaluation</Text>
+                  <Text style={styles.evaluationTitle}>
+                    {evaluation?.status === 'ready' && typeof evaluation.accuracy === 'number'
+                      ? `${Math.round(evaluation.accuracy * 100)}% accuracy`
+                      : 'Unavailable'}
+                  </Text>
+                </View>
+                {evaluation?.status === 'ready' ? (
+                  <>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>Test rows</Text>
+                      <Text style={styles.metaValue}>{evaluation.test_rows}</Text>
+                    </View>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaLabel}>Labels</Text>
+                      <Text style={styles.metaValue}>{evaluation.labels?.length || 0}</Text>
+                    </View>
+                    {!!evaluation.confusion_matrix?.length && (
+                      <View style={styles.matrix}>
+                        {evaluation.confusion_matrix.map((row, rowIndex) => (
+                          <View key={`row-${rowIndex}`} style={styles.matrixRow}>
+                            {row.map((value, colIndex) => (
+                              <Text key={`${rowIndex}-${colIndex}`} style={styles.matrixCell}>
+                                {value}
+                              </Text>
+                            ))}
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <Text style={styles.warningText}>{evaluation?.reason || 'Evaluation metrics are not ready.'}</Text>
+                )}
               </View>
               <Text style={styles.sectionTitle}>Ready Gestures</Text>
             </>
@@ -196,6 +239,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     marginTop: spacing.sm,
+  },
+  evaluationCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+    ...shadow,
+  },
+  evaluationTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '900',
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  matrix: {
+    marginTop: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+  },
+  matrixRow: {
+    flexDirection: 'row',
+  },
+  matrixCell: {
+    flex: 1,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+    color: colors.text,
+    fontWeight: '800',
   },
   errorText: {
     color: colors.danger,
