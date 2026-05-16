@@ -35,5 +35,19 @@ class Settings(BaseSettings):
             )
         ),
     )
+    ML_DATASET_PATH: str = os.getenv(
+        "ML_DATASET_PATH",
+        os.path.abspath(
+            os.path.join(
+                os.path.dirname(__file__),
+                "..",
+                "..",
+                "..",
+                "smart-glove-ai",
+                "data",
+                "gesture_dataset.csv",
+            )
+        ),
+    )
 
 settings = Settings()

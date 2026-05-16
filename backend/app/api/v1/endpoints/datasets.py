@@ -14,10 +14,17 @@ from app.schemas.dataset import (
     DatasetOutWithItems
 )
 from app.services.dataset_service import dataset_service
+from app.services.model_status_service import model_status_service
 
 from app.services.dataset_export_service import dataset_export_service
 
 router = APIRouter()
+
+@router.get("/status/model", response_model=Dict[str, Any])
+def read_model_status(
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    return model_status_service.get_status()
 
 @router.get("/{id}/export", response_model=Dict[str, Any])
 def export_dataset(

@@ -21,6 +21,24 @@ def test_create_dataset_researcher(client: TestClient, test_researcher):
     assert response.json()["name"] == "Research Dataset"
     assert response.json()["created_by"] == test_researcher.id
 
+def test_read_model_status(client: TestClient, test_user, monkeypatch):
+    headers = get_auth_headers(test_user)
+
+    monkeypatch.setattr(
+        "app.api.v1.endpoints.datasets.model_status_service.get_status",
+        lambda: {
+            "trained_model": {"feature_set": "2", "labels": ["REST"]},
+            "dataset_counts": {"REST": 100},
+            "ready_labels": [{"code": "REST", "output": "", "samples": 100, "status": "ready"}],
+            "pending_labels": [],
+        },
+    )
+
+    response = client.get(f"{settings.API_V1_STR}/datasets/status/model", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["trained_model"]["feature_set"] == "2"
+
 def test_create_dataset_user_forbidden(client: TestClient, test_user):
     headers = get_auth_headers(test_user)
     data = {"name": "User Dataset", "version": "1.0", "source_type": "uploaded"}

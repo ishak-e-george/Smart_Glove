@@ -1,43 +1,34 @@
-import React from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { modelStatusApi, ModelStatus, ReadyLabel } from '../api/modelStatusApi';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
-const trainedGestures = [
-  {
-    code: 'INDEX_BENT',
-    output: 'Yes',
-    samples: 100,
-    status: 'Ready',
-  },
-  {
-    code: 'MIDDLE_BENT',
-    output: 'No',
-    samples: 300,
-    status: 'Ready',
-  },
-  {
-    code: 'REST',
-    output: 'Silent baseline',
-    samples: 100,
-    status: 'Ready',
-  },
-];
-
-const pendingGestures = [
-  {
-    code: 'BOTH_BENT',
-    output: 'Help',
-    action: 'Collect real samples and retrain.',
-  },
-  {
-    code: 'INDEX_HALF',
-    output: 'Water',
-    action: 'Collect real samples and retrain.',
-  },
-];
-
 const ModelStatusScreen = ({ navigation }: any) => {
+  const [status, setStatus] = useState<ModelStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const fetchStatus = async () => {
+    setLoading(true);
+    setErrorMessage('');
+    try {
+      const data = await modelStatusApi.getStatus();
+      setStatus(data);
+    } catch {
+      setErrorMessage('Unable to load model status from the backend.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStatus();
+  }, []);
+
+  const readyLabels = status?.ready_labels ?? [];
+  const pendingLabels = status?.pending_labels ?? [];
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -50,61 +41,82 @@ const ModelStatusScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={trainedGestures}
-        keyExtractor={(item) => item.code}
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={
-          <>
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>Current model scope</Text>
-              <Text style={styles.summaryTitle}>2-finger supervised classifier</Text>
-              <Text style={styles.summaryText}>
-                The app can run the complete upload, prediction, phrase, and history workflow with the trained classes below.
-              </Text>
-            </View>
-            <Text style={styles.sectionTitle}>Ready Gestures</Text>
-          </>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.gestureCard}>
-            <View style={styles.gestureHeader}>
-              <Text style={styles.gestureCode}>{item.code}</Text>
-              <View style={styles.readyBadge}>
-                <Text style={styles.readyBadgeText}>{item.status}</Text>
+      {loading ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading model status</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={readyLabels}
+          keyExtractor={(item) => item.code}
+          contentContainerStyle={styles.content}
+          ListHeaderComponent={
+            <>
+              <View style={styles.summaryCard}>
+                <Text style={styles.summaryLabel}>Current model scope</Text>
+                <Text style={styles.summaryTitle}>
+                  {status?.trained_model.feature_set ? `${status.trained_model.feature_set}-finger supervised classifier` : 'Supervised gesture classifier'}
+                </Text>
+                <Text style={styles.summaryText}>
+                  The app can run the complete upload, prediction, phrase, and history workflow with the trained classes below.
+                </Text>
+                {status?.trained_model.load_error && (
+                  <Text style={styles.warningText}>
+                    Model metadata is unavailable until backend ML dependencies are installed.
+                  </Text>
+                )}
+                {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+              </View>
+              <Text style={styles.sectionTitle}>Ready Gestures</Text>
+            </>
+          }
+          renderItem={({ item }: { item: ReadyLabel }) => (
+            <View style={styles.gestureCard}>
+              <View style={styles.gestureHeader}>
+                <Text style={styles.gestureCode}>{item.code}</Text>
+                <View style={styles.readyBadge}>
+                  <Text style={styles.readyBadgeText}>Ready</Text>
+                </View>
+              </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Output</Text>
+                <Text style={styles.metaValue}>{item.output || 'Silent baseline'}</Text>
+              </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Dataset rows</Text>
+                <Text style={styles.metaValue}>{item.samples}</Text>
               </View>
             </View>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Output</Text>
-              <Text style={styles.metaValue}>{item.output}</Text>
-            </View>
-            <View style={styles.metaRow}>
-              <Text style={styles.metaLabel}>Dataset rows</Text>
-              <Text style={styles.metaValue}>{item.samples}</Text>
-            </View>
-          </View>
-        )}
-        ListFooterComponent={
-          <>
-            <Text style={styles.sectionTitle}>Pending Gestures</Text>
-            {pendingGestures.map((item) => (
-              <View style={styles.pendingCard} key={item.code}>
-                <View style={styles.gestureHeader}>
-                  <Text style={styles.gestureCode}>{item.code}</Text>
-                  <View style={styles.pendingBadge}>
-                    <Text style={styles.pendingBadgeText}>Pending</Text>
+          )}
+          ListFooterComponent={
+            <>
+              <Text style={styles.sectionTitle}>Pending Gestures</Text>
+              {pendingLabels.map((item) => (
+                <View style={styles.pendingCard} key={item.code}>
+                  <View style={styles.gestureHeader}>
+                    <Text style={styles.gestureCode}>{item.code}</Text>
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>Pending</Text>
+                    </View>
                   </View>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.metaLabel}>Target output</Text>
+                    <Text style={styles.metaValue}>{item.output}</Text>
+                  </View>
+                  <Text style={styles.pendingAction}>{item.required_action}</Text>
                 </View>
-                <View style={styles.metaRow}>
-                  <Text style={styles.metaLabel}>Target output</Text>
-                  <Text style={styles.metaValue}>{item.output}</Text>
-                </View>
-                <Text style={styles.pendingAction}>{item.action}</Text>
-              </View>
-            ))}
-          </>
-        }
-      />
+              ))}
+            </>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No Trained Labels</Text>
+              <Text style={styles.summaryText}>The backend did not return trained gesture labels.</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 };
@@ -149,6 +161,16 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     paddingBottom: spacing.xl,
   },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontWeight: '700',
+  },
   summaryCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
@@ -173,6 +195,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
+    marginTop: spacing.sm,
+  },
+  errorText: {
+    color: colors.danger,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: spacing.sm,
+  },
+  warningText: {
+    color: colors.warning,
+    fontSize: 13,
+    fontWeight: '700',
     marginTop: spacing.sm,
   },
   sectionTitle: {
@@ -250,6 +284,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginTop: spacing.sm,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg,
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: spacing.xs,
   },
 });
 
