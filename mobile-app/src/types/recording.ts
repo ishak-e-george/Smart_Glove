@@ -31,6 +31,7 @@ export interface Recording {
   sample_rate: number;
   duration_ms: number;
   sensor_count: number;
+  status?: string;
   created_at: string;
 }
 
@@ -47,6 +48,7 @@ export interface PredictionResponse {
   predicted_gesture_id: number;
   confidence: number;
   source_type: string;
+  raw_input_ref?: string;
   created_at: string;
 }
 

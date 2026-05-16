@@ -11,6 +11,7 @@ import HardwareCaptureScreen from './src/screens/HardwareCaptureScreen';
 import PhraseOutputScreen from './src/screens/PhraseOutputScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ModelStatusScreen from './src/screens/ModelStatusScreen';
+import RecordingsScreen from './src/screens/RecordingsScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -69,6 +70,11 @@ export default function App() {
             name="ModelStatus"
             component={ModelStatusScreen}
             options={{ title: 'Model Status' }}
+          />
+          <Stack.Screen
+            name="Recordings"
+            component={RecordingsScreen}
+            options={{ title: 'Recordings' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

@@ -89,6 +89,9 @@ const DevicesScreen = ({ navigation }: any) => {
           <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
             <Text style={styles.secondaryButtonText}>History</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Recordings')}>
+            <Text style={styles.secondaryButtonText}>Data</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('ModelStatus')}>
             <Text style={styles.secondaryButtonText}>Model</Text>
           </TouchableOpacity>
