@@ -10,6 +10,7 @@ import MockCaptureScreen from './src/screens/MockCaptureScreen';
 import HardwareCaptureScreen from './src/screens/HardwareCaptureScreen';
 import PhraseOutputScreen from './src/screens/PhraseOutputScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
+import ModelStatusScreen from './src/screens/ModelStatusScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -63,6 +64,11 @@ export default function App() {
             name="History" 
             component={HistoryScreen} 
             options={{ title: 'Prediction History' }}
+          />
+          <Stack.Screen
+            name="ModelStatus"
+            component={ModelStatusScreen}
+            options={{ title: 'Model Status' }}
           />
         </Stack.Navigator>
       </NavigationContainer>
