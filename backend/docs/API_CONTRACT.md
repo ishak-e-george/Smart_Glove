@@ -25,7 +25,7 @@
 }
 ```
 
-## 3. Recording Upload (Mock Mode)
+## 3. Recording Upload (Multipart)
 **Endpoint:** `POST /recordings/upload`
 **Auth:** Bearer Token required
 **Type:** `multipart/form-data`
@@ -55,3 +55,43 @@
   "source_type": "mock"
 }
 ```
+
+## 6. Recording Upload (JSON)
+**Endpoint:** `POST /recordings/upload-json`
+**Auth:** Bearer Token required
+**Request:**
+```json
+{
+  "device_id": 1,
+  "gesture_code": "INDEX_BENT",
+  "sample_rate": 50,
+  "duration_ms": 2000,
+  "sensor_count": 6,
+  "samples": [
+    [1549, 1545, 70, 1912, 1909, 7]
+  ]
+}
+```
+
+## 7. Prediction From Recording
+**Endpoint:** `POST /predictions/from-recording/{recording_id}`
+**Auth:** Bearer Token required
+**Response:**
+```json
+{
+  "prediction_id": 10,
+  "gesture_id": 3,
+  "model_label": "INDEX_BENT",
+  "confidence": 0.98
+}
+```
+
+## 8. Model Status
+**Endpoint:** `GET /datasets/status/model`
+**Auth:** Bearer Token required
+**Response:** Current trained labels, dataset counts, pending labels, and model metadata.
+
+## 9. Recordings Training Export
+**Endpoint:** `GET /datasets/export/recordings`
+**Auth:** Bearer Token required
+**Response:** CSV-ready column list, row preview, label counts, and recording manifest.
