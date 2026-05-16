@@ -1,5 +1,6 @@
 import { BleManager, Device, Subscription } from "react-native-ble-plx";
 import { decode as atob, encode as btoa } from "base-64";
+import { Platform } from "react-native";
 
 export const SMART_GLOVE_BLE = {
   SERVICE_UUID: "7c8f0001-7a6b-4c5d-9f2a-111111111111",
@@ -8,7 +9,7 @@ export const SMART_GLOVE_BLE = {
   STATUS_UUID: "7c8f0004-7a6b-4c5d-9f2a-111111111111"
 };
 
-const manager = new BleManager();
+const manager = Platform.OS === "web" ? null : new BleManager();
 
 let activeDevice: Device | null = null;
 let sampleSubscription: Subscription | null = null;
@@ -19,6 +20,11 @@ export function scanForGlove(
   onFound: (device: Device) => void,
   onError: (message: string) => void
 ) {
+  if (!manager) {
+    onError("BLE capture is only available in the native mobile app.");
+    return;
+  }
+
   manager.startDeviceScan(
     [SMART_GLOVE_BLE.SERVICE_UUID],
     null,
@@ -37,6 +43,10 @@ export function scanForGlove(
 }
 
 export async function connectToGlove(device: Device): Promise<Device> {
+  if (!manager) {
+    throw new Error("BLE capture is only available in the native mobile app.");
+  }
+
   const connected = await device.connect();
   const readyDevice = await connected.discoverAllServicesAndCharacteristics();
 
