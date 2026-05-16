@@ -107,6 +107,13 @@ cd "C:\Users\HP\Desktop\New Fyp-V1\backend"
 python -m app.scripts.seed_demo_data
 ```
 
+Bootstrap a complete software demo state with user, gestures, phrases, demo device, recordings, and predictions:
+
+```powershell
+cd "C:\Users\HP\Desktop\New Fyp-V1\backend"
+python -m app.scripts.bootstrap_demo_workflow
+```
+
 Default seeded login:
 
 ```text

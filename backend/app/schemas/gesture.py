@@ -4,14 +4,14 @@ from datetime import datetime
 
 # Shared properties
 class GestureBase(BaseModel):
-    code: Optional[str] = Field(None, pattern=r"^[A-Z0-9_]+$", min_length=3, max_length=50)
+    code: Optional[str] = Field(None, pattern=r"^[A-Z0-9_]+$", min_length=2, max_length=50)
     display_name: Optional[str] = Field(None, min_length=2, max_length=100)
     description: Optional[str] = None
     is_active: Optional[bool] = True
 
 # Properties to receive via API on creation
 class GestureCreate(GestureBase):
-    code: str = Field(..., pattern=r"^[A-Z0-9_]+$", min_length=3, max_length=50)
+    code: str = Field(..., pattern=r"^[A-Z0-9_]+$", min_length=2, max_length=50)
     display_name: str = Field(..., min_length=2, max_length=100)
 
 # Properties to receive via API on update
