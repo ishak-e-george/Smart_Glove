@@ -7,6 +7,7 @@ from app.models.dataset_item import DatasetItem
 from app.models.gesture import Gesture
 from app.models.recording import Recording
 from app.models.device import Device
+from unittest.mock import patch
 
 def test_create_dataset_researcher(client: TestClient, test_researcher):
     headers = get_auth_headers(test_researcher)
@@ -38,6 +39,47 @@ def test_read_model_status(client: TestClient, test_user, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["trained_model"]["feature_set"] == "2"
+
+def test_export_recordings_training_data(client: TestClient, db: Session, test_user):
+    device = Device(device_name="D1", serial_number="SN_EXPORT", device_type="glove", user_id=test_user.id)
+    db.add(device)
+    db.commit()
+
+    recording = Recording(
+        user_id=test_user.id,
+        device_id=device.id,
+        file_path="uploads/recordings/test.json",
+        sample_rate=50,
+        duration_ms=2000,
+        sensor_count=6,
+    )
+    db.add(recording)
+    db.commit()
+
+    payload = {
+        "gesture_code": "INDEX_BENT",
+        "samples": [
+            [1549, 1545, 70, 1912, 1909, 7],
+            [1550, 1546, 71, 1911, 1908, 8],
+        ],
+    }
+
+    class FakePath:
+        def __init__(self, path):
+            self.path = path
+
+        def read_text(self, encoding="utf-8"):
+            import json
+            return json.dumps(payload)
+
+    headers = get_auth_headers(test_user)
+    with patch("app.services.dataset_export_service.Path", FakePath):
+        response = client.get(f"{settings.API_V1_STR}/datasets/export/recordings", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["row_count"] == 2
+    assert response.json()["label_counts"]["INDEX_BENT"] == 2
+    assert response.json()["csv_columns"][-1] == "label"
 
 def test_create_dataset_user_forbidden(client: TestClient, test_user):
     headers = get_auth_headers(test_user)

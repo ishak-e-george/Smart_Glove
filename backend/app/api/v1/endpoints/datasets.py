@@ -26,6 +26,17 @@ def read_model_status(
 ) -> Any:
     return model_status_service.get_status()
 
+@router.get("/export/recordings", response_model=Dict[str, Any])
+def export_recordings_training_data(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Any:
+    return dataset_export_service.export_recordings_training_data(
+        db,
+        user_id=current_user.id,
+        role=current_user.role,
+    )
+
 @router.get("/{id}/export", response_model=Dict[str, Any])
 def export_dataset(
     *,

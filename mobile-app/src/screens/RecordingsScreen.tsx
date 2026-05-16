@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { datasetExportApi, TrainingExport } from '../api/datasetExportApi';
 import { predictionApi } from '../api/predictionApi';
 import { recordingApi } from '../api/recordingApi';
 import { PredictionResponse, Recording } from '../types/recording';
@@ -12,6 +13,8 @@ const RecordingsScreen = ({ navigation }: any) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [exportData, setExportData] = useState<TrainingExport | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const fetchData = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
@@ -100,6 +103,19 @@ const RecordingsScreen = ({ navigation }: any) => {
     );
   };
 
+  const handleExport = async () => {
+    setExporting(true);
+    setErrorMessage('');
+    try {
+      const data = await datasetExportApi.exportRecordings();
+      setExportData(data);
+    } catch {
+      setErrorMessage('Unable to export recordings.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -129,6 +145,41 @@ const RecordingsScreen = ({ navigation }: any) => {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.content}
+          ListHeaderComponent={
+            <>
+              <View style={styles.exportPanel}>
+                <View style={styles.exportHeader}>
+                  <View>
+                    <Text style={styles.exportTitle}>Training Export</Text>
+                    <Text style={styles.exportSubtitle}>Build a CSV-ready dataset from uploaded recordings.</Text>
+                  </View>
+                  <TouchableOpacity style={styles.exportButton} onPress={handleExport} disabled={exporting}>
+                    <Text style={styles.exportButtonText}>{exporting ? 'Exporting' : 'Export'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {exportData && (
+                  <View style={styles.exportSummary}>
+                    <View style={styles.exportMetric}>
+                      <Text style={styles.exportMetricValue}>{exportData.recording_count}</Text>
+                      <Text style={styles.exportMetricLabel}>recordings</Text>
+                    </View>
+                    <View style={styles.exportMetric}>
+                      <Text style={styles.exportMetricValue}>{exportData.row_count}</Text>
+                      <Text style={styles.exportMetricLabel}>rows</Text>
+                    </View>
+                    <View style={styles.labelCounts}>
+                      {Object.entries(exportData.label_counts).map(([label, count]) => (
+                        <Text key={label} style={styles.labelCountText}>
+                          {label}: {count}
+                        </Text>
+                      ))}
+                    </View>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.sectionTitle}>Uploaded Recordings</Text>
+            </>
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -213,6 +264,77 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.md,
     paddingBottom: spacing.xl,
+  },
+  exportPanel: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.lg,
+    ...shadow,
+  },
+  exportHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  exportTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  exportSubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: spacing.xs,
+    maxWidth: 210,
+  },
+  exportButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  exportButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  exportSummary: {
+    marginTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: spacing.md,
+  },
+  exportMetric: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs,
+  },
+  exportMetricValue: {
+    color: colors.text,
+    fontWeight: '900',
+    fontSize: 18,
+  },
+  exportMetricLabel: {
+    color: colors.textMuted,
+    fontWeight: '700',
+  },
+  labelCounts: {
+    marginTop: spacing.sm,
+    gap: 3,
+  },
+  labelCountText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+    marginBottom: spacing.sm,
   },
   recordingCard: {
     backgroundColor: colors.surface,
