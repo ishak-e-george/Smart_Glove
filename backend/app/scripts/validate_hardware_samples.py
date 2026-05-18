@@ -14,12 +14,16 @@ EXPECTED_RANGES = {
     "REST": {"index": (0, 20), "middle": (0, 20)},
     "INDEX_BENT": {"index": (60, 100), "middle": (0, 20)},
     "MIDDLE_BENT": {"index": (0, 20), "middle": (60, 100)},
+    "BOTH_BENT": {"index": (60, 100), "middle": (60, 100)},
+    "INDEX_HALF": {"index": (25, 59), "middle": (0, 20)},
 }
 
 DEFAULT_FILES = {
     "REST": "rest.txt",
     "INDEX_BENT": "index_bent.txt",
     "MIDDLE_BENT": "middle_bent.txt",
+    "BOTH_BENT": "both_bent.txt",
+    "INDEX_HALF": "index_half.txt",
 }
 
 
@@ -66,7 +70,7 @@ def main() -> int:
 
     results = [
         validate_label(label, args.dir / DEFAULT_FILES[label])
-        for label in sorted(SUPPORTED_LABELS)
+        for label in sorted(EXPECTED_RANGES)
     ]
 
     for result in results:

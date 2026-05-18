@@ -14,6 +14,8 @@ export const mockSensorService = {
       REST: [1764, 1763, 2, 1913, 1912, 6],
       INDEX_BENT: [1549, 1545, 70, 1912, 1909, 7],
       MIDDLE_BENT: [1733, 1735, 5, 1870, 1870, 47],
+      BOTH_BENT: [1800, 1800, 90, 1800, 1800, 88],
+      INDEX_HALF: [1897, 1885, 35, 1977, 1979, 2],
     };
     const [
       indexRawTarget,

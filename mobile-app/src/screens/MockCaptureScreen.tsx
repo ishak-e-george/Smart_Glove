@@ -25,6 +25,18 @@ const SUPPORTED_GESTURES = [
     phrase: 'Silent',
     detail: 'Neutral hand position used as the baseline class.',
   },
+  {
+    code: 'BOTH_BENT',
+    title: 'Both Bend',
+    phrase: 'Help',
+    detail: 'Train with both index and middle bent before using for prediction.',
+  },
+  {
+    code: 'INDEX_HALF',
+    title: 'Index Half',
+    phrase: 'Water',
+    detail: 'Train with index half-bent and middle open before using for prediction.',
+  },
 ];
 
 const MockCaptureScreen = ({ route, navigation }: any) => {

@@ -56,6 +56,8 @@ Current proof target:
 REST: indexPercent 0-20, middlePercent 0-20
 INDEX_BENT: indexPercent 60-100, middlePercent 0-20
 MIDDLE_BENT: indexPercent 0-20, middlePercent 60-100
+BOTH_BENT: indexPercent 60-100, middlePercent 60-100
+INDEX_HALF: indexPercent 25-59, middlePercent 0-20
 ```
 
 For final quality, collect at least:
@@ -64,6 +66,8 @@ For final quality, collect at least:
 REST: 30 clean rows
 INDEX_BENT: 30 clean rows
 MIDDLE_BENT: 30 clean rows
+BOTH_BENT: 30 clean rows
+INDEX_HALF: 30 clean rows
 ```
 
 ## 3. Import and Retrain Commands
@@ -78,6 +82,13 @@ python -m app.scripts.import_serial_capture --label INDEX_BENT --file hardware_s
 python -m app.scripts.import_serial_capture --label MIDDLE_BENT --file hardware_samples/middle_bent.txt --retrain
 ```
 
+When the two extra labels are ready, use:
+
+```powershell
+python -m app.scripts.import_serial_capture --label BOTH_BENT --file hardware_samples/both_bent.txt
+python -m app.scripts.import_serial_capture --label INDEX_HALF --file hardware_samples/index_half.txt --retrain
+```
+
 Then verify:
 
 ```powershell
@@ -90,4 +101,3 @@ python -m pytest
 Use this wording:
 
 > The Smart Glove platform supports a complete ML workflow. Real Arduino flex-sensor samples were captured through Serial Monitor, imported into backend recordings, exported as training rows, used to retrain the RandomForest gesture model, and verified in the mobile interface through Recordings, Model Status, Evaluation, and Phrase Output screens.
-
