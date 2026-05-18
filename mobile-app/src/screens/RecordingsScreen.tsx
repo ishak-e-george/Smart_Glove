@@ -7,6 +7,8 @@ import { recordingApi } from '../api/recordingApi';
 import { PredictionResponse, Recording } from '../types/recording';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
+type RecordingFilter = 'all' | 'hardware' | 'software';
+
 const RecordingsScreen = ({ navigation }: any) => {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [predictions, setPredictions] = useState<PredictionResponse[]>([]);
@@ -15,6 +17,7 @@ const RecordingsScreen = ({ navigation }: any) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [exportData, setExportData] = useState<TrainingExport | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [filter, setFilter] = useState<RecordingFilter>('hardware');
 
   const fetchData = async (showSpinner = true) => {
     if (showSpinner) setLoading(true);
@@ -66,6 +69,33 @@ const RecordingsScreen = ({ navigation }: any) => {
     return lookup;
   }, [exportData]);
 
+  const isHardwareRecording = (recording: Recording) => {
+    const sample = exportByRecording.get(recording.id);
+    return recording.sample_rate === 8 && recording.sensor_count === 6 && !!sample?.gesture_code;
+  };
+
+  const visibleRecordings = useMemo(() => {
+    return recordings
+      .filter((recording) => {
+        const isHardware = isHardwareRecording(recording);
+        if (filter === 'hardware') return isHardware;
+        if (filter === 'software') return !isHardware;
+        return true;
+      })
+      .sort((a, b) => {
+        const hardwareDelta = Number(isHardwareRecording(b)) - Number(isHardwareRecording(a));
+        if (hardwareDelta !== 0) return hardwareDelta;
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      });
+  }, [exportByRecording, filter, recordings]);
+
+  const hardwareCount = useMemo(
+    () => recordings.filter((recording) => isHardwareRecording(recording)).length,
+    [exportByRecording, recordings]
+  );
+
+  const softwareCount = recordings.length - hardwareCount;
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
@@ -75,7 +105,7 @@ const RecordingsScreen = ({ navigation }: any) => {
     const exportSample = exportByRecording.get(item.id);
     const label = exportSample?.gesture_code;
     const rowsExported = exportSample?.rows_exported;
-    const isHardwareImport = item.sample_rate === 8 && item.sensor_count === 6 && !!label;
+    const isHardwareImport = isHardwareRecording(item);
 
     return (
       <View style={styles.recordingCard}>
@@ -173,7 +203,8 @@ const RecordingsScreen = ({ navigation }: any) => {
         </View>
       ) : (
         <FlatList
-          data={recordings}
+          data={visibleRecordings}
+          style={styles.list}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderItem}
           contentContainerStyle={styles.content}
@@ -209,7 +240,26 @@ const RecordingsScreen = ({ navigation }: any) => {
                   </View>
                 )}
               </View>
-              <Text style={styles.sectionTitle}>Uploaded Recordings</Text>
+              <View style={styles.filterPanel}>
+                <Text style={styles.sectionTitle}>Uploaded Recordings</Text>
+                <View style={styles.filterRow}>
+                  {[
+                    { key: 'hardware' as const, label: `Hardware (${hardwareCount})` },
+                    { key: 'software' as const, label: `Software (${softwareCount})` },
+                    { key: 'all' as const, label: `All (${recordings.length})` },
+                  ].map((item) => (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={[styles.filterButton, filter === item.key && styles.filterButtonActive]}
+                      onPress={() => setFilter(item.key)}
+                    >
+                      <Text style={[styles.filterButtonText, filter === item.key && styles.filterButtonTextActive]}>
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
             </>
           }
           refreshControl={
@@ -225,7 +275,7 @@ const RecordingsScreen = ({ navigation }: any) => {
           ListEmptyComponent={
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No Recordings</Text>
-              <Text style={styles.emptyText}>Software or hardware captures will appear here.</Text>
+              <Text style={styles.emptyText}>No recordings match the selected filter.</Text>
             </View>
           }
         />
@@ -300,6 +350,9 @@ const styles = StyleSheet.create({
     maxWidth: 980,
     alignSelf: 'center',
   },
+  list: {
+    flex: 1,
+  },
   exportPanel: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
@@ -370,6 +423,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     marginBottom: spacing.sm,
+  },
+  filterPanel: {
+    marginBottom: spacing.md,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  filterButton: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  filterButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterButtonText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  filterButtonTextActive: {
+    color: '#FFFFFF',
   },
   recordingCard: {
     backgroundColor: colors.surface,
