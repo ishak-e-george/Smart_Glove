@@ -1,126 +1,86 @@
-// Smart Glove AI - 5 Finger Calibrator + 2 Finger ML Stream
+// Smart Glove: 2-Finger Calibration Tool + AI Telemetry
 // Board: Arduino Nano 33 BLE Rev2
 //
-// Wiring per finger:
-// 3.3V -> Flex Sensor -> Analog Pin -> 22k resistor -> GND
-// Optional: 0.1uF capacitor from analog pin to GND
-//
-// Pins:
+// Fingers:
 // A0 = Index
 // A1 = Middle
-// A2 = Ring
-// A3 = Pinky
-// A4 = Thumb
 //
-// Serial commands:
-// n1..n5 = set how many fingers are physically connected right now
-// f1..f5 = save current smoothed reading as FLAT for one finger
-// c1..c5 = save current smoothed reading as CURL for one finger
-// r1..r5 = reset calibration for one finger
-// fa = save FLAT for all fingers
-// ca = save CURL for all fingers
-// r  = reset all calibration
-// h  = print help and current calibration
-//
-// Current ML output format:
-// indexRaw,indexSmooth,indexPercent,middleRaw,middleSmooth,middlePercent
+// Commands in Serial Monitor:
+// f = save current position as FLAT / OPEN for both fingers
+// c = save current position as CURL / BENT for both fingers
+// r = reset calibration for both fingers
 
-#include "kvstore_global_api.h"
-
-const unsigned long SERIAL_BAUD = 115200;
-const unsigned long SAMPLE_DELAY_MS = 100;
-const unsigned long CALIBRATION_SETTLE_MS = 500;
-
+const int SERIAL_SPEED = 115200;
+const int READ_DELAY_MS = 120;
 const int WINDOW_SIZE = 10;
-const int CALIBRATION_SAMPLE_COUNT = 100;
 
-const int MIN_RANGE_FOR_PERCENT = 100;
+const int MIN_USABLE_RANGE = 50;
 const int GOOD_RANGE = 150;
-const int FINGER_COUNT = 5;
+const int VERY_GOOD_RANGE = 300;
+const int EXCELLENT_RANGE = 700;
 
-const uint32_t CALIBRATION_MAGIC = 0x53474149;
-const uint16_t CALIBRATION_VERSION = 2;
-const char* CALIBRATION_KEY = "/kv/smart_glove_cal";
+const int ADC_LOW_LIMIT = 2;
+const int ADC_HIGH_LIMIT = 4093;
 
-struct FingerSensor {
+struct FingerCal {
   const char* name;
   int pin;
-  int samples[WINDOW_SIZE];
-  int sampleIndex;
-  long sampleTotal;
+  int readings[WINDOW_SIZE];
+  int readIndex;
+  long total;
   int flatValue;
   int curlValue;
 };
 
-FingerSensor fingers[FINGER_COUNT] = {
+const int FINGER_COUNT = 2;
+
+FingerCal fingers[FINGER_COUNT] = {
   {"INDEX",  A0, {0}, 0, 0, -1, -1},
-  {"MIDDLE", A1, {0}, 0, 0, -1, -1},
-  {"RING",   A2, {0}, 0, 0, -1, -1},
-  {"PINKY",  A3, {0}, 0, 0, -1, -1},
-  {"THUMB",  A4, {0}, 0, 0, -1, -1}
+  {"MIDDLE", A1, {0}, 0, 0, -1, -1}
 };
 
-struct CalibrationStore {
-  uint32_t magic;
-  uint16_t version;
-  int activeFingerCount;
-  int flatValues[FINGER_COUNT];
-  int curlValues[FINGER_COUNT];
-};
-
-int activeFingerCount = 2;
-
-int updateSmooth(FingerSensor &finger, int rawValue);
-int computePercent(const FingerSensor &finger, int smoothValue);
-int computeRange(const FingerSensor &finger);
-const char* getRangeQuality(const FingerSensor &finger);
-
-void handleSerialCommands(int smoothValues[]);
-void saveFlatCalibration(FingerSensor &finger, int smoothValue);
-void saveCurlCalibration(FingerSensor &finger, int smoothValue);
-void resetCalibration(FingerSensor &finger);
-
-void printHelp();
-void printCalibrationLine(const FingerSensor &finger, int fingerNumber);
-
-bool loadCalibration();
-bool saveCalibration();
-void deleteCalibration();
-
-String readCommand();
-int parseFingerNumber(const String &text);
-bool isFingerActive(int fingerIndex);
-void setActiveFingerCount(int count);
-
-void saveFlatForFinger(int fingerIndex, int smoothValues[]);
-void saveCurlForFinger(int fingerIndex, int smoothValues[]);
-void resetFingerCalibration(int fingerIndex);
-
-void saveFlatForAll(int smoothValues[]);
-void saveCurlForAll(int smoothValues[]);
-void resetAllCalibration();
-
-int measureMedianSample(int pin);
-void sortSamples(int values[], int count);
+int updateSmooth(FingerCal &finger, int raw);
+void handleCommands(int smoothValues[]);
+int getRange(const FingerCal &finger);
+int getPercent(const FingerCal &finger, int smooth);
+String getState(const FingerCal &finger, int percent);
+String getQuality(int range);
+void printFingerDashboard(const FingerCal &finger, int raw, int smooth);
+void printSmartWarnings(const FingerCal &finger, int smooth, int range);
+void printVisualizerFrame(int smoothValues[]);
+void printAiCsvFrame(int rawValues[], int smoothValues[]);
 
 void setup() {
-  Serial.begin(SERIAL_BAUD);
+  Serial.begin(SERIAL_SPEED);
   analogReadResolution(12);
   delay(1000);
 
   for (int i = 0; i < FINGER_COUNT; i++) {
-    fingers[i].sampleTotal = 0;
-    fingers[i].sampleIndex = 0;
+    fingers[i].total = 0;
+    fingers[i].readIndex = 0;
 
     for (int j = 0; j < WINDOW_SIZE; j++) {
-      int reading = analogRead(fingers[i].pin);
-      fingers[i].samples[j] = reading;
-      fingers[i].sampleTotal += reading;
+      int v = analogRead(fingers[i].pin);
+      fingers[i].readings[j] = v;
+      fingers[i].total += v;
     }
   }
 
-  loadCalibration();
-  printHelp();
+  Serial.println();
+  Serial.println("=== SMART GLOVE 2-FINGER CALIBRATION ===");
+  Serial.println("Pins:");
+  Serial.println("A0 = INDEX");
+  Serial.println("A1 = MIDDLE");
+  Serial.println();
+  Serial.println("Commands:");
+  Serial.println("f = save FLAT / OPEN for both fingers");
+  Serial.println("c = save CURL / BENT for both fingers");
+  Serial.println("r = reset all calibration");
+  Serial.println();
+  Serial.println("AI CSV format:");
+  Serial.println("indexRaw,indexSmooth,indexPercent,middleRaw,middleSmooth,middlePercent");
+  Serial.println("========================================");
+  Serial.println();
 }
 
 void loop() {
@@ -132,461 +92,224 @@ void loop() {
     smoothValues[i] = updateSmooth(fingers[i], rawValues[i]);
   }
 
-  handleSerialCommands(smoothValues);
+  handleCommands(smoothValues);
+  printAiCsvFrame(rawValues, smoothValues);
+  printVisualizerFrame(smoothValues);
 
-  int indexPercent = computePercent(fingers[0], smoothValues[0]);
-  int middlePercent = computePercent(fingers[1], smoothValues[1]);
+  Serial.println("------------------------------------------------------------");
+  for (int i = 0; i < FINGER_COUNT; i++) {
+    printFingerDashboard(fingers[i], rawValues[i], smoothValues[i]);
+    Serial.println();
+  }
+
+  delay(READ_DELAY_MS);
+}
+
+int updateSmooth(FingerCal &finger, int raw) {
+  finger.total -= finger.readings[finger.readIndex];
+  finger.readings[finger.readIndex] = raw;
+  finger.total += finger.readings[finger.readIndex];
+
+  finger.readIndex++;
+  if (finger.readIndex >= WINDOW_SIZE) {
+    finger.readIndex = 0;
+  }
+
+  return finger.total / WINDOW_SIZE;
+}
+
+void handleCommands(int smoothValues[]) {
+  if (!Serial.available()) {
+    return;
+  }
+
+  char cmd = Serial.read();
+  while (Serial.available()) {
+    Serial.read();
+  }
+
+  if (cmd == 'f' || cmd == 'F') {
+    Serial.println();
+    Serial.println("Saving FLAT values...");
+    for (int i = 0; i < FINGER_COUNT; i++) {
+      fingers[i].flatValue = smoothValues[i];
+      Serial.print(fingers[i].name);
+      Serial.print(" FLAT = ");
+      Serial.println(fingers[i].flatValue);
+    }
+    Serial.println();
+  }
+
+  if (cmd == 'c' || cmd == 'C') {
+    Serial.println();
+    Serial.println("Saving CURL values...");
+    for (int i = 0; i < FINGER_COUNT; i++) {
+      fingers[i].curlValue = smoothValues[i];
+      Serial.print(fingers[i].name);
+      Serial.print(" CURL = ");
+      Serial.print(fingers[i].curlValue);
+      Serial.print(" | RANGE = ");
+      Serial.println(getRange(fingers[i]));
+    }
+    Serial.println();
+  }
+
+  if (cmd == 'r' || cmd == 'R') {
+    for (int i = 0; i < FINGER_COUNT; i++) {
+      fingers[i].flatValue = -1;
+      fingers[i].curlValue = -1;
+    }
+
+    Serial.println();
+    Serial.println("All calibration reset.");
+    Serial.println();
+  }
+}
+
+int getRange(const FingerCal &finger) {
+  if (finger.flatValue == -1 || finger.curlValue == -1) {
+    return -1;
+  }
+  return abs(finger.curlValue - finger.flatValue);
+}
+
+int getPercent(const FingerCal &finger, int smooth) {
+  if (finger.flatValue == -1 || finger.curlValue == -1) {
+    return -1;
+  }
+
+  int range = getRange(finger);
+  if (range < MIN_USABLE_RANGE) {
+    return -1;
+  }
+
+  float percent = ((float)(smooth - finger.flatValue) / (float)(finger.curlValue - finger.flatValue)) * 100.0;
+  if (percent < 0) percent = 0;
+  if (percent > 100) percent = 100;
+
+  return (int)percent;
+}
+
+String getState(const FingerCal &finger, int percent) {
+  if (finger.flatValue == -1 || finger.curlValue == -1) {
+    return "UNCALIBRATED";
+  }
+
+  int range = getRange(finger);
+  if (range < MIN_USABLE_RANGE) {
+    return "BAD_RANGE";
+  }
+
+  if (percent < 25) return "OPEN";
+  if (percent < 65) return "HALF";
+  return "BENT";
+}
+
+String getQuality(int range) {
+  if (range == -1) return "N/A";
+  if (range < MIN_USABLE_RANGE) return "BAD";
+  if (range < GOOD_RANGE) return "WEAK";
+  if (range < VERY_GOOD_RANGE) return "GOOD";
+  if (range < EXCELLENT_RANGE) return "VERY_GOOD";
+  return "EXCELLENT";
+}
+
+void printFingerDashboard(const FingerCal &finger, int raw, int smooth) {
+  int range = getRange(finger);
+  int percent = getPercent(finger, smooth);
+  String state = getState(finger, percent);
+  String quality = getQuality(range);
+
+  Serial.print(finger.name);
+  Serial.print(" | RAW=");
+  Serial.print(raw);
+  Serial.print(" | SMOOTH=");
+  Serial.print(smooth);
+  Serial.print(" | FLAT=");
+  Serial.print(finger.flatValue);
+  Serial.print(" | CURL=");
+  Serial.print(finger.curlValue);
+  Serial.print(" | RANGE=");
+  if (range == -1) Serial.print("N/A");
+  else Serial.print(range);
+  Serial.print(" | QUALITY=");
+  Serial.print(quality);
+  Serial.print(" | PERCENT=");
+  if (percent == -1) Serial.print("N/A");
+  else {
+    Serial.print(percent);
+    Serial.print("%");
+  }
+  Serial.print(" | STATE=");
+  Serial.print(state);
+
+  printSmartWarnings(finger, smooth, range);
+}
+
+void printSmartWarnings(const FingerCal &finger, int smooth, int range) {
+  if (finger.flatValue == -1 || finger.curlValue == -1) {
+    if (smooth <= ADC_LOW_LIMIT) {
+      Serial.print(" <-- POSSIBLE GND SHORT");
+    }
+    if (smooth >= ADC_HIGH_LIMIT) {
+      Serial.print(" <-- POSSIBLE 3.3V SHORT");
+    }
+    return;
+  }
+
+  if (range < MIN_USABLE_RANGE) {
+    Serial.print(" <-- RANGE TOO SMALL");
+    return;
+  }
+
+  if (smooth <= ADC_LOW_LIMIT) {
+    Serial.print(" <-- STUCK NEAR 0");
+  }
+
+  if (smooth >= ADC_HIGH_LIMIT) {
+    Serial.print(" <-- STUCK NEAR 4095");
+  }
+}
+
+void printVisualizerFrame(int smoothValues[]) {
+  Serial.print("VIS");
+
+  for (int i = 0; i < FINGER_COUNT; i++) {
+    int range = getRange(fingers[i]);
+    int percent = getPercent(fingers[i], smoothValues[i]);
+    String state = getState(fingers[i], percent);
+    String quality = getQuality(range);
+
+    Serial.print(",");
+    Serial.print(smoothValues[i]);
+    Serial.print(",");
+    if (percent == -1) Serial.print(0);
+    else Serial.print(percent);
+    Serial.print(",");
+    Serial.print(state);
+    Serial.print(",");
+    if (range == -1) Serial.print(0);
+    else Serial.print(range);
+    Serial.print(",");
+    Serial.print(quality);
+  }
+
+  Serial.println();
+}
+
+void printAiCsvFrame(int rawValues[], int smoothValues[]) {
+  int indexPercent = getPercent(fingers[0], smoothValues[0]);
+  int middlePercent = getPercent(fingers[1], smoothValues[1]);
 
   Serial.print(rawValues[0]);
   Serial.print(",");
   Serial.print(smoothValues[0]);
   Serial.print(",");
-  Serial.print(indexPercent);
+  Serial.print(indexPercent == -1 ? 0 : indexPercent);
   Serial.print(",");
   Serial.print(rawValues[1]);
   Serial.print(",");
   Serial.print(smoothValues[1]);
   Serial.print(",");
-  Serial.println(middlePercent);
-
-  delay(SAMPLE_DELAY_MS);
-}
-
-int updateSmooth(FingerSensor &finger, int rawValue) {
-  finger.sampleTotal -= finger.samples[finger.sampleIndex];
-  finger.samples[finger.sampleIndex] = rawValue;
-  finger.sampleTotal += rawValue;
-
-  finger.sampleIndex++;
-  if (finger.sampleIndex >= WINDOW_SIZE) {
-    finger.sampleIndex = 0;
-  }
-
-  return finger.sampleTotal / WINDOW_SIZE;
-}
-
-int computeRange(const FingerSensor &finger) {
-  if (finger.flatValue < 0 || finger.curlValue < 0) {
-    return 0;
-  }
-
-  return abs(finger.curlValue - finger.flatValue);
-}
-
-int computePercent(const FingerSensor &finger, int smoothValue) {
-  if (finger.flatValue < 0 || finger.curlValue < 0) {
-    return -1;
-  }
-
-  int range = computeRange(finger);
-
-  if (range < MIN_RANGE_FOR_PERCENT || finger.flatValue == finger.curlValue) {
-    return -1;
-  }
-
-  float percent = ((float)(smoothValue - finger.flatValue) / (float)(finger.curlValue - finger.flatValue)) * 100.0;
-
-  if (percent < 0.0) {
-    percent = 0.0;
-  }
-
-  if (percent > 100.0) {
-    percent = 100.0;
-  }
-
-  return (int)(percent + 0.5);
-}
-
-const char* getRangeQuality(const FingerSensor &finger) {
-  if (finger.flatValue < 0 || finger.curlValue < 0) {
-    return "N/A";
-  }
-
-  int range = computeRange(finger);
-
-  if (range < MIN_RANGE_FOR_PERCENT) {
-    return "BAD";
-  }
-
-  if (range < GOOD_RANGE) {
-    return "USABLE";
-  }
-
-  return "GOOD";
-}
-
-void handleSerialCommands(int smoothValues[]) {
-  String command = readCommand();
-
-  if (command.length() == 0) {
-    return;
-  }
-
-  command.trim();
-  command.toLowerCase();
-
-  if (command == "h" || command == "?") {
-    printHelp();
-    return;
-  }
-
-  if (command.startsWith("n") && command.length() >= 2) {
-    int requestedCount = command.substring(1).toInt();
-
-    if (requestedCount < 1 || requestedCount > FINGER_COUNT) {
-      Serial.println("# Invalid active finger count. Use n1..n5");
-      return;
-    }
-
-    setActiveFingerCount(requestedCount);
-    return;
-  }
-
-  if (command.startsWith("f") && command.length() >= 2 && command != "fa") {
-    int fingerIndex = parseFingerNumber(command.substring(1));
-
-    if (fingerIndex < 0 || fingerIndex >= FINGER_COUNT) {
-      Serial.println("# Invalid finger for FLAT. Use f1..f5");
-      return;
-    }
-
-    saveFlatForFinger(fingerIndex, smoothValues);
-    return;
-  }
-
-  if (command.startsWith("c") && command.length() >= 2 && command != "ca") {
-    int fingerIndex = parseFingerNumber(command.substring(1));
-
-    if (fingerIndex < 0 || fingerIndex >= FINGER_COUNT) {
-      Serial.println("# Invalid finger for CURL. Use c1..c5");
-      return;
-    }
-
-    saveCurlForFinger(fingerIndex, smoothValues);
-    return;
-  }
-
-  if (command.startsWith("r") && command.length() >= 2) {
-    int fingerIndex = parseFingerNumber(command.substring(1));
-
-    if (fingerIndex < 0 || fingerIndex >= FINGER_COUNT) {
-      Serial.println("# Invalid finger for RESET. Use r1..r5");
-      return;
-    }
-
-    resetFingerCalibration(fingerIndex);
-    return;
-  }
-
-  if (command == "fa" || command == "f") {
-    saveFlatForAll(smoothValues);
-    return;
-  }
-
-  if (command == "ca" || command == "c") {
-    saveCurlForAll(smoothValues);
-    return;
-  }
-
-  if (command == "r") {
-    resetAllCalibration();
-    return;
-  }
-
-  Serial.print("# Unknown command: ");
-  Serial.println(command);
-}
-
-void saveFlatCalibration(FingerSensor &finger, int smoothValue) {
-  finger.flatValue = smoothValue;
-}
-
-void saveCurlCalibration(FingerSensor &finger, int smoothValue) {
-  finger.curlValue = smoothValue;
-}
-
-void resetCalibration(FingerSensor &finger) {
-  finger.flatValue = -1;
-  finger.curlValue = -1;
-}
-
-void printHelp() {
-  Serial.println("# Smart Glove AI 5-finger calibrator");
-  Serial.println("# Commands:");
-  Serial.println("#   n1..n5 = set how many fingers are connected");
-  Serial.println("#   f1..f5 = save flat for one finger");
-  Serial.println("#   c1..c5 = save curl for one finger");
-  Serial.println("#   r1..r5 = reset one finger");
-  Serial.println("#   fa = save flat for all fingers");
-  Serial.println("#   ca = save curl for all fingers");
-  Serial.println("#   r  = reset all fingers");
-  Serial.println("#   h  = help");
-  Serial.println("# Calibration is saved in board flash and restored on reboot");
-
-  Serial.print("# Active finger count = ");
-  Serial.println(activeFingerCount);
-
-  if (activeFingerCount < 2) {
-    Serial.println("# Warning: the Python ML demo expects at least INDEX and MIDDLE connected");
-  }
-
-  for (int i = 0; i < FINGER_COUNT; i++) {
-    printCalibrationLine(fingers[i], i + 1);
-  }
-
-  Serial.println("# Current ML stream keeps 2-finger CSV compatibility");
-  Serial.println("# Streaming CSV: indexRaw,indexSmooth,indexPercent,middleRaw,middleSmooth,middlePercent");
-}
-
-void printCalibrationLine(const FingerSensor &finger, int fingerNumber) {
-  Serial.print("# ");
-  Serial.print(fingerNumber);
-  Serial.print(":");
-  Serial.print(finger.name);
-  Serial.print(" active=");
-  Serial.print(isFingerActive(fingerNumber - 1) ? "Y" : "N");
-  Serial.print(" flat=");
-  Serial.print(finger.flatValue);
-  Serial.print(" curl=");
-  Serial.print(finger.curlValue);
-  Serial.print(" range=");
-  Serial.print(computeRange(finger));
-  Serial.print(" quality=");
-  Serial.println(getRangeQuality(finger));
-}
-
-bool loadCalibration() {
-  CalibrationStore stored;
-  size_t actualSize = 0;
-
-  int result = kv_get(CALIBRATION_KEY, &stored, sizeof(stored), &actualSize);
-
-  if (result != 0 || actualSize != sizeof(stored)) {
-    return false;
-  }
-
-  if (stored.magic != CALIBRATION_MAGIC || stored.version != CALIBRATION_VERSION) {
-    return false;
-  }
-
-  if (stored.activeFingerCount >= 1 && stored.activeFingerCount <= FINGER_COUNT) {
-    activeFingerCount = stored.activeFingerCount;
-  }
-
-  for (int i = 0; i < FINGER_COUNT; i++) {
-    fingers[i].flatValue = stored.flatValues[i];
-    fingers[i].curlValue = stored.curlValues[i];
-  }
-
-  return true;
-}
-
-bool saveCalibration() {
-  CalibrationStore stored;
-
-  stored.magic = CALIBRATION_MAGIC;
-  stored.version = CALIBRATION_VERSION;
-  stored.activeFingerCount = activeFingerCount;
-
-  for (int i = 0; i < FINGER_COUNT; i++) {
-    stored.flatValues[i] = fingers[i].flatValue;
-    stored.curlValues[i] = fingers[i].curlValue;
-  }
-
-  int result = kv_set(CALIBRATION_KEY, &stored, sizeof(stored), 0);
-
-  if (result != 0) {
-    Serial.print("# Failed to save calibration: ");
-    Serial.println(result);
-    return false;
-  }
-
-  Serial.println("# Calibration saved to flash");
-  return true;
-}
-
-void deleteCalibration() {
-  kv_remove(CALIBRATION_KEY);
-}
-
-String readCommand() {
-  if (!Serial.available()) {
-    return "";
-  }
-
-  String command = Serial.readStringUntil('\n');
-  command.trim();
-
-  return command;
-}
-
-int parseFingerNumber(const String &text) {
-  if (text.length() == 0) {
-    return -1;
-  }
-
-  int fingerNumber = text.toInt();
-
-  if (fingerNumber < 1 || fingerNumber > FINGER_COUNT) {
-    return -1;
-  }
-
-  return fingerNumber - 1;
-}
-
-bool isFingerActive(int fingerIndex) {
-  return fingerIndex >= 0 && fingerIndex < activeFingerCount;
-}
-
-void setActiveFingerCount(int count) {
-  if (count < 1 || count > FINGER_COUNT) {
-    Serial.println("# Invalid active finger count");
-    return;
-  }
-
-  activeFingerCount = count;
-  saveCalibration();
-
-  Serial.print("# Active finger count set to ");
-  Serial.println(activeFingerCount);
-
-  printHelp();
-}
-
-void saveFlatForFinger(int fingerIndex, int smoothValues[]) {
-  if (!isFingerActive(fingerIndex)) {
-    Serial.print("# ");
-    Serial.print(fingers[fingerIndex].name);
-    Serial.println(" is not active. Use n1..n5 first.");
-    return;
-  }
-
-  int medianValue = measureMedianSample(fingers[fingerIndex].pin);
-  saveFlatCalibration(fingers[fingerIndex], medianValue);
-  saveCalibration();
-
-  Serial.print("# Saved FLAT for ");
-  Serial.println(fingers[fingerIndex].name);
-
-  Serial.print("# Median FLAT value = ");
-  Serial.println(medianValue);
-
-  printCalibrationLine(fingers[fingerIndex], fingerIndex + 1);
-}
-
-void saveCurlForFinger(int fingerIndex, int smoothValues[]) {
-  if (!isFingerActive(fingerIndex)) {
-    Serial.print("# ");
-    Serial.print(fingers[fingerIndex].name);
-    Serial.println(" is not active. Use n1..n5 first.");
-    return;
-  }
-
-  int medianValue = measureMedianSample(fingers[fingerIndex].pin);
-  saveCurlCalibration(fingers[fingerIndex], medianValue);
-  saveCalibration();
-
-  Serial.print("# Saved CURL for ");
-  Serial.println(fingers[fingerIndex].name);
-
-  Serial.print("# Median CURL value = ");
-  Serial.println(medianValue);
-
-  printCalibrationLine(fingers[fingerIndex], fingerIndex + 1);
-
-  if (computeRange(fingers[fingerIndex]) < MIN_RANGE_FOR_PERCENT) {
-    Serial.print("# Warning: ");
-    Serial.print(fingers[fingerIndex].name);
-    Serial.println(" range is BAD. Recalibrate with a stronger bend.");
-  }
-}
-
-void resetFingerCalibration(int fingerIndex) {
-  if (!isFingerActive(fingerIndex)) {
-    Serial.print("# ");
-    Serial.print(fingers[fingerIndex].name);
-    Serial.println(" is not active. Use n1..n5 first.");
-    return;
-  }
-
-  resetCalibration(fingers[fingerIndex]);
-  saveCalibration();
-
-  Serial.print("# Reset calibration for ");
-  Serial.println(fingers[fingerIndex].name);
-
-  printCalibrationLine(fingers[fingerIndex], fingerIndex + 1);
-}
-
-void saveFlatForAll(int smoothValues[]) {
-  for (int i = 0; i < activeFingerCount; i++) {
-    int medianValue = measureMedianSample(fingers[i].pin);
-    saveFlatCalibration(fingers[i], medianValue);
-  }
-
-  saveCalibration();
-
-  Serial.println("# Saved FLAT for all active fingers");
-
-  for (int i = 0; i < FINGER_COUNT; i++) {
-    printCalibrationLine(fingers[i], i + 1);
-  }
-}
-
-void saveCurlForAll(int smoothValues[]) {
-  for (int i = 0; i < activeFingerCount; i++) {
-    int medianValue = measureMedianSample(fingers[i].pin);
-    saveCurlCalibration(fingers[i], medianValue);
-  }
-
-  saveCalibration();
-
-  Serial.println("# Saved CURL for all active fingers");
-
-  for (int i = 0; i < FINGER_COUNT; i++) {
-    printCalibrationLine(fingers[i], i + 1);
-  }
-}
-
-void resetAllCalibration() {
-  for (int i = 0; i < FINGER_COUNT; i++) {
-    resetCalibration(fingers[i]);
-  }
-
-  deleteCalibration();
-
-  Serial.println("# Reset calibration for all fingers");
-
-  for (int i = 0; i < FINGER_COUNT; i++) {
-    printCalibrationLine(fingers[i], i + 1);
-  }
-}
-
-int measureMedianSample(int pin) {
-  int samples[CALIBRATION_SAMPLE_COUNT];
-
-  delay(CALIBRATION_SETTLE_MS);
-
-  for (int i = 0; i < CALIBRATION_SAMPLE_COUNT; i++) {
-    samples[i] = analogRead(pin);
-    delay(2);
-  }
-
-  sortSamples(samples, CALIBRATION_SAMPLE_COUNT);
-
-  return samples[CALIBRATION_SAMPLE_COUNT / 2];
-}
-
-void sortSamples(int values[], int count) {
-  for (int i = 1; i < count; i++) {
-    int key = values[i];
-    int j = i - 1;
-
-    while (j >= 0 && values[j] > key) {
-      values[j + 1] = values[j];
-      j--;
-    }
-
-    values[j + 1] = key;
-  }
+  Serial.println(middlePercent == -1 ? 0 : middlePercent);
 }

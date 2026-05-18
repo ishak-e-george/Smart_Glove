@@ -1,15 +1,14 @@
-// Smart Glove: 3-Finger Calibration Tool + Visualizer Telemetry
+// Smart Glove: 2-Finger Calibration Tool + AI Telemetry
 // Board: Arduino Nano 33 BLE Rev2
 //
 // Fingers:
 // A0 = Index
 // A1 = Middle
-// A2 = Ring
 //
 // Commands in Serial Monitor:
-// f = save current position as FLAT / OPEN for all 3 fingers
-// c = save current position as CURL / BENT for all 3 fingers
-// r = reset calibration for all 3 fingers
+// f = save current position as FLAT / OPEN for both fingers
+// c = save current position as CURL / BENT for both fingers
+// r = reset calibration for both fingers
 
 const int SERIAL_SPEED = 115200;
 const int READ_DELAY_MS = 120;
@@ -33,10 +32,11 @@ struct FingerCal {
   int curlValue;
 };
 
-FingerCal fingers[3] = {
+const int FINGER_COUNT = 2;
+
+FingerCal fingers[FINGER_COUNT] = {
   {"INDEX",  A0, {0}, 0, 0, -1, -1},
-  {"MIDDLE", A1, {0}, 0, 0, -1, -1},
-  {"RING",   A2, {0}, 0, 0, -1, -1}
+  {"MIDDLE", A1, {0}, 0, 0, -1, -1}
 };
 
 int updateSmooth(FingerCal &finger, int raw);
@@ -48,13 +48,14 @@ String getQuality(int range);
 void printFingerDashboard(const FingerCal &finger, int raw, int smooth);
 void printSmartWarnings(const FingerCal &finger, int smooth, int range);
 void printVisualizerFrame(int smoothValues[]);
+void printAiCsvFrame(int rawValues[], int smoothValues[]);
 
 void setup() {
   Serial.begin(SERIAL_SPEED);
   analogReadResolution(12);
   delay(1000);
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < FINGER_COUNT; i++) {
     fingers[i].total = 0;
     fingers[i].readIndex = 0;
 
@@ -66,34 +67,37 @@ void setup() {
   }
 
   Serial.println();
-  Serial.println("=== SMART GLOVE 3-FINGER CALIBRATION ===");
+  Serial.println("=== SMART GLOVE 2-FINGER CALIBRATION ===");
   Serial.println("Pins:");
   Serial.println("A0 = INDEX");
   Serial.println("A1 = MIDDLE");
-  Serial.println("A2 = RING");
   Serial.println();
   Serial.println("Commands:");
-  Serial.println("f = save FLAT / OPEN for all 3 fingers");
-  Serial.println("c = save CURL / BENT for all 3 fingers");
+  Serial.println("f = save FLAT / OPEN for both fingers");
+  Serial.println("c = save CURL / BENT for both fingers");
   Serial.println("r = reset all calibration");
+  Serial.println();
+  Serial.println("AI CSV format:");
+  Serial.println("indexRaw,indexSmooth,indexPercent,middleRaw,middleSmooth,middlePercent");
   Serial.println("========================================");
   Serial.println();
 }
 
 void loop() {
-  int rawValues[3];
-  int smoothValues[3];
+  int rawValues[FINGER_COUNT];
+  int smoothValues[FINGER_COUNT];
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < FINGER_COUNT; i++) {
     rawValues[i] = analogRead(fingers[i].pin);
     smoothValues[i] = updateSmooth(fingers[i], rawValues[i]);
   }
 
   handleCommands(smoothValues);
+  printAiCsvFrame(rawValues, smoothValues);
   printVisualizerFrame(smoothValues);
 
   Serial.println("------------------------------------------------------------");
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < FINGER_COUNT; i++) {
     printFingerDashboard(fingers[i], rawValues[i], smoothValues[i]);
     Serial.println();
   }
@@ -127,7 +131,7 @@ void handleCommands(int smoothValues[]) {
   if (cmd == 'f' || cmd == 'F') {
     Serial.println();
     Serial.println("Saving FLAT values...");
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < FINGER_COUNT; i++) {
       fingers[i].flatValue = smoothValues[i];
       Serial.print(fingers[i].name);
       Serial.print(" FLAT = ");
@@ -139,7 +143,7 @@ void handleCommands(int smoothValues[]) {
   if (cmd == 'c' || cmd == 'C') {
     Serial.println();
     Serial.println("Saving CURL values...");
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < FINGER_COUNT; i++) {
       fingers[i].curlValue = smoothValues[i];
       Serial.print(fingers[i].name);
       Serial.print(" CURL = ");
@@ -151,7 +155,7 @@ void handleCommands(int smoothValues[]) {
   }
 
   if (cmd == 'r' || cmd == 'R') {
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < FINGER_COUNT; i++) {
       fingers[i].flatValue = -1;
       fingers[i].curlValue = -1;
     }
@@ -270,7 +274,7 @@ void printSmartWarnings(const FingerCal &finger, int smooth, int range) {
 void printVisualizerFrame(int smoothValues[]) {
   Serial.print("VIS");
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < FINGER_COUNT; i++) {
     int range = getRange(fingers[i]);
     int percent = getPercent(fingers[i], smoothValues[i]);
     String state = getState(fingers[i], percent);
@@ -291,4 +295,21 @@ void printVisualizerFrame(int smoothValues[]) {
   }
 
   Serial.println();
+}
+
+void printAiCsvFrame(int rawValues[], int smoothValues[]) {
+  int indexPercent = getPercent(fingers[0], smoothValues[0]);
+  int middlePercent = getPercent(fingers[1], smoothValues[1]);
+
+  Serial.print(rawValues[0]);
+  Serial.print(",");
+  Serial.print(smoothValues[0]);
+  Serial.print(",");
+  Serial.print(indexPercent == -1 ? 0 : indexPercent);
+  Serial.print(",");
+  Serial.print(rawValues[1]);
+  Serial.print(",");
+  Serial.print(smoothValues[1]);
+  Serial.print(",");
+  Serial.println(middlePercent == -1 ? 0 : middlePercent);
 }
