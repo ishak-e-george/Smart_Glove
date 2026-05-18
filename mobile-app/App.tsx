@@ -13,6 +13,7 @@ import HistoryScreen from './src/screens/HistoryScreen';
 import ModelStatusScreen from './src/screens/ModelStatusScreen';
 import RecordingsScreen from './src/screens/RecordingsScreen';
 import SpeechDemoScreen from './src/screens/SpeechDemoScreen';
+import SerialGloveDemoScreen from './src/screens/SerialGloveDemoScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -81,6 +82,11 @@ export default function App() {
             name="SpeechDemo"
             component={SpeechDemoScreen}
             options={{ title: '3D Speech Demo' }}
+          />
+          <Stack.Screen
+            name="SerialGloveDemo"
+            component={SerialGloveDemoScreen}
+            options={{ title: 'Live USB Demo' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

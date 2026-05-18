@@ -55,7 +55,7 @@ const DevicesScreen = ({ navigation }: any) => {
     setSelectedDevice(item);
   };
 
-  const openCapture = (routeName: 'MockCapture' | 'HardwareCapture') => {
+  const openCapture = (routeName: 'MockCapture' | 'HardwareCapture' | 'SerialGloveDemo') => {
     if (!selectedDevice) return;
     const deviceId = selectedDevice.id;
     setSelectedDevice(null);
@@ -124,6 +124,13 @@ const DevicesScreen = ({ navigation }: any) => {
                   <Text style={styles.actionTitle}>3D Speech Demo</Text>
                   <Text style={styles.actionText}>Visualize gestures and speak the translated words.</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionCard, styles.liveActionCard]}
+                  onPress={() => navigation.navigate('SerialGloveDemo', { deviceId: devices[0]?.id })}
+                >
+                  <Text style={styles.actionTitle}>Live USB Glove</Text>
+                  <Text style={styles.actionText}>Read Arduino Serial, speak detected words, and collect samples.</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('History')}>
                   <Text style={styles.actionTitle}>History</Text>
                   <Text style={styles.actionText}>Review predictions and confidence.</Text>
@@ -176,6 +183,10 @@ const DevicesScreen = ({ navigation }: any) => {
             <TouchableOpacity style={styles.primaryModeButton} onPress={() => openCapture('MockCapture')}>
               <Text style={styles.modeButtonTitle}>Model Smoke Test</Text>
               <Text style={styles.modeButtonMeta}>Run prediction and phrase output with trained sample data</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.primaryModeButton} onPress={() => openCapture('SerialGloveDemo')}>
+              <Text style={styles.modeButtonTitle}>Live USB Glove Demo</Text>
+              <Text style={styles.modeButtonMeta}>Use Arduino Serial for visualization, speech, and sample collection</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeButton, isWeb && styles.disabledModeButton]}
@@ -292,6 +303,10 @@ const styles = StyleSheet.create({
   demoActionCard: {
     borderColor: colors.primary,
     backgroundColor: '#EAF4F7',
+  },
+  liveActionCard: {
+    borderColor: colors.success,
+    backgroundColor: '#ECFDF3',
   },
   actionTitle: {
     color: colors.text,
