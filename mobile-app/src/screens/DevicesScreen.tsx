@@ -120,6 +120,10 @@ const DevicesScreen = ({ navigation }: any) => {
               </View>
 
               <View style={styles.actionGrid}>
+                <TouchableOpacity style={[styles.actionCard, styles.demoActionCard]} onPress={() => navigation.navigate('SpeechDemo')}>
+                  <Text style={styles.actionTitle}>3D Speech Demo</Text>
+                  <Text style={styles.actionText}>Visualize gestures and speak the translated words.</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('History')}>
                   <Text style={styles.actionTitle}>History</Text>
                   <Text style={styles.actionText}>Review predictions and confidence.</Text>
@@ -284,6 +288,10 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
     ...shadow,
+  },
+  demoActionCard: {
+    borderColor: colors.primary,
+    backgroundColor: '#EAF4F7',
   },
   actionTitle: {
     color: colors.text,

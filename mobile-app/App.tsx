@@ -12,6 +12,7 @@ import PhraseOutputScreen from './src/screens/PhraseOutputScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import ModelStatusScreen from './src/screens/ModelStatusScreen';
 import RecordingsScreen from './src/screens/RecordingsScreen';
+import SpeechDemoScreen from './src/screens/SpeechDemoScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -75,6 +76,11 @@ export default function App() {
             name="Recordings"
             component={RecordingsScreen}
             options={{ title: 'Recordings' }}
+          />
+          <Stack.Screen
+            name="SpeechDemo"
+            component={SpeechDemoScreen}
+            options={{ title: '3D Speech Demo' }}
           />
         </Stack.Navigator>
       </NavigationContainer>
