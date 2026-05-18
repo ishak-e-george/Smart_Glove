@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, FlatList, Modal, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, FlatList, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { deviceApi, DeviceCreate } from '../api/deviceApi';
 import { colors, radius, shadow, spacing } from '../styles/theme';
@@ -61,6 +61,8 @@ const DevicesScreen = ({ navigation }: any) => {
     setSelectedDevice(null);
     navigation.navigate(routeName, { deviceId });
   };
+
+  const isWeb = Platform.OS === 'web';
 
   const renderItem = ({ item }: { item: DeviceItem }) => (
     <TouchableOpacity 
@@ -167,13 +169,16 @@ const DevicesScreen = ({ navigation }: any) => {
           <View style={styles.modePanel}>
             <Text style={styles.modeTitle}>{selectedDevice?.device_name}</Text>
             <Text style={styles.modeSerial}>{selectedDevice?.serial_number}</Text>
-            <TouchableOpacity style={styles.modeButton} onPress={() => openCapture('HardwareCapture')}>
-              <Text style={styles.modeButtonTitle}>Live BLE Capture</Text>
-              <Text style={styles.modeButtonMeta}>Use the connected glove</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.modeButton} onPress={() => openCapture('MockCapture')}>
+            <TouchableOpacity style={styles.primaryModeButton} onPress={() => openCapture('MockCapture')}>
               <Text style={styles.modeButtonTitle}>Model Smoke Test</Text>
-              <Text style={styles.modeButtonMeta}>Use trained sample data</Text>
+              <Text style={styles.modeButtonMeta}>Run prediction and phrase output with trained sample data</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeButton, isWeb && styles.disabledModeButton]}
+              onPress={() => openCapture('HardwareCapture')}
+            >
+              <Text style={styles.modeButtonTitle}>Live BLE Capture</Text>
+              <Text style={styles.modeButtonMeta}>{isWeb ? 'Native mobile build only' : 'Use the connected glove'}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cancelButton} onPress={() => setSelectedDevice(null)}>
               <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -404,6 +409,17 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     marginBottom: spacing.sm,
     backgroundColor: colors.surface,
+  },
+  primaryModeButton: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.surfaceMuted,
+  },
+  disabledModeButton: {
+    opacity: 0.65,
   },
   modeButtonTitle: {
     color: colors.text,
