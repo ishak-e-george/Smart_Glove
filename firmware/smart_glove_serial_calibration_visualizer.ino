@@ -22,7 +22,7 @@
 #include "kvstore_global_api.h"
 
 const int SERIAL_SPEED = 115200;
-const int READ_DELAY_MS = 120;
+const int READ_DELAY_MS = 60;
 const int WINDOW_SIZE = 10;
 const int CALIBRATION_SAMPLE_COUNT = 80;
 const int CALIBRATION_SETTLE_MS = 300;
@@ -127,7 +127,6 @@ void loop() {
   }
 
   printAiCsvFrame(rawValues, smoothValues);
-  printDashboard(rawValues, smoothValues);
   delay(READ_DELAY_MS);
 }
 
