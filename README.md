@@ -200,6 +200,14 @@ Backend tests: passing
 Mobile TypeScript: passing
 ```
 
+## Demo Guide
+
+For a short runbook, see:
+
+```text
+README_DEMO.md
+```
+
 ## Hardware Status
 
 The project includes Arduino firmware, BLE service code, serial prediction scripts, and a browser/WebSocket speech visualizer.

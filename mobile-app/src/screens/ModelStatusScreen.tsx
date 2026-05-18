@@ -72,6 +72,9 @@ const ModelStatusScreen = ({ navigation }: any) => {
                     Model metadata is unavailable until backend ML dependencies are installed.
                   </Text>
                 )}
+                <Text style={styles.summaryText}>
+                  Current model supports {readyLabels.length} labels. Pending gestures need more clean samples before training.
+                </Text>
                 {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
               </View>
               <View style={styles.evaluationCard}>
@@ -148,6 +151,7 @@ const ModelStatusScreen = ({ navigation }: any) => {
                     <Text style={styles.metaValue}>{item.output}</Text>
                   </View>
                   <Text style={styles.pendingAction}>{item.required_action}</Text>
+                  <Text style={styles.pendingAction}>Pending - needs more data before training.</Text>
                 </View>
               ))}
             </>

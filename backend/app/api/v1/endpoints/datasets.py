@@ -1,5 +1,6 @@
 from typing import Any, List, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db, get_current_user, get_current_active_researcher
@@ -36,6 +37,24 @@ def export_recordings_training_data(
         db,
         user_id=current_user.id,
         role=current_user.role,
+    )
+
+@router.get("/export/recordings.csv")
+def export_recordings_training_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> Response:
+    csv_data = dataset_export_service.export_recordings_training_csv(
+        db,
+        user_id=current_user.id,
+        role=current_user.role,
+    )
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="smart_glove_training_export.csv"'
+        },
     )
 
 @router.get("/status/evaluation", response_model=Dict[str, Any])

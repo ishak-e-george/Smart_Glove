@@ -99,6 +99,45 @@ def test_export_recordings_training_data(client: TestClient, db: Session, test_u
     assert response.json()["label_counts"]["INDEX_BENT"] == 2
     assert response.json()["csv_columns"][-1] == "label"
 
+def test_export_recordings_training_csv(client: TestClient, db: Session, test_user):
+    device = Device(device_name="D1", serial_number="SN_EXPORT_CSV", device_type="glove", user_id=test_user.id)
+    db.add(device)
+    db.commit()
+
+    recording = Recording(
+        user_id=test_user.id,
+        device_id=device.id,
+        file_path="uploads/recordings/test.csv.json",
+        sample_rate=50,
+        duration_ms=2000,
+        sensor_count=6,
+    )
+    db.add(recording)
+    db.commit()
+
+    payload = {
+        "gesture_code": "MIDDLE_BENT",
+        "samples": [[1733, 1735, 5, 1870, 1870, 47]],
+    }
+
+    class FakePath:
+        def __init__(self, path):
+            self.path = path
+
+        def read_text(self, encoding="utf-8"):
+            import json
+            return json.dumps(payload)
+
+    headers = get_auth_headers(test_user)
+    with patch("app.services.dataset_export_service.Path", FakePath):
+        response = client.get(f"{settings.API_V1_STR}/datasets/export/recordings.csv", headers=headers)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "smart_glove_training_export.csv" in response.headers["content-disposition"]
+    assert "label,indexRaw,indexSmooth,indexPercent,middleRaw,middleSmooth,middlePercent" in response.text
+    assert "MIDDLE_BENT,1733,1735,5,1870,1870,47" in response.text
+
 def test_create_dataset_user_forbidden(client: TestClient, test_user):
     headers = get_auth_headers(test_user)
     data = {"name": "User Dataset", "version": "1.0", "source_type": "uploaded"}

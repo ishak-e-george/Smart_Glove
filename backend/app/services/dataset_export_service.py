@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 from typing import List, Dict, Any
 from pathlib import Path
@@ -128,5 +130,43 @@ class DatasetExportService:
                 "skipped": skipped,
             },
         }
+
+    def export_recordings_training_csv(
+        self,
+        db: Session,
+        user_id: int,
+        role: str,
+        limit: int = 1000,
+    ) -> str:
+        export = self.export_recordings_training_data(
+            db,
+            user_id=user_id,
+            role=role,
+            limit=limit,
+        )
+        output = io.StringIO()
+        fieldnames = ["label"] + TWO_FINGER_COLUMNS
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+
+        for sample in export["manifest"]["samples"]:
+            try:
+                payload = json.loads(Path(sample["file_path"]).read_text(encoding="utf-8"))
+            except Exception:
+                continue
+
+            label = payload.get("gesture_code") or "UNLABELED"
+            samples = payload.get("samples")
+            if not isinstance(samples, list):
+                continue
+
+            for row_values in samples:
+                if not isinstance(row_values, list) or len(row_values) != len(TWO_FINGER_COLUMNS):
+                    continue
+                row = dict(zip(TWO_FINGER_COLUMNS, row_values))
+                row["label"] = label
+                writer.writerow(row)
+
+        return output.getvalue()
 
 dataset_export_service = DatasetExportService()
