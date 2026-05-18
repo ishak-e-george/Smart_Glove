@@ -187,6 +187,9 @@ const styles = StyleSheet.create({
   listContent: {
     padding: spacing.md,
     paddingBottom: spacing.xl,
+    width: '100%',
+    maxWidth: 860,
+    alignSelf: 'center',
   },
   historyItem: {
     backgroundColor: colors.surface,

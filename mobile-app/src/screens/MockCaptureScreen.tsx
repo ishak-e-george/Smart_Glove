@@ -66,11 +66,27 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>Software Capture</Text>
-        <Text style={styles.title}>Gesture Sample</Text>
+        <View>
+          <Text style={styles.eyebrow}>Software Capture</Text>
+          <Text style={styles.title}>Gesture Sample</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.headerButton}
+          onPress={() => navigation.navigate('Main')}
+          disabled={capturing || uploading}
+        >
+          <Text style={styles.headerButtonText}>Home</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
+        <View style={styles.introCard}>
+          <Text style={styles.introTitle}>Select a trained gesture</Text>
+          <Text style={styles.introText}>
+            The app generates sensor-shaped samples, uploads the recording, runs ML inference, and returns a phrase.
+          </Text>
+        </View>
+
         <View style={styles.gesturePicker}>
           {SUPPORTED_GESTURES.map((gesture) => {
             const selected = gesture.code === selectedGesture.code;
@@ -137,12 +153,11 @@ const MockCaptureScreen = ({ route, navigation }: any) => {
           
           {!capturing && !uploading && (
             <TouchableOpacity 
-              style={styles.captureButton} 
+              style={styles.captureButton}
               onPress={handleCapture}
             >
-              <View style={styles.innerCircle}>
-                <Text style={styles.captureButtonText}>Start</Text>
-              </View>
+              <Text style={styles.captureButtonText}>Run Capture</Text>
+              <Text style={styles.captureButtonSubtext}>{selectedGesture.code}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -165,6 +180,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: spacing.lg,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
@@ -182,10 +200,44 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.text,
   },
+  headerButton: {
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.sm,
+  },
+  headerButtonText: {
+    color: colors.primary,
+    fontWeight: '800',
+  },
   content: {
     flex: 1,
     padding: spacing.lg,
     alignItems: 'center',
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+  },
+  introCard: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadow,
+  },
+  introTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  introText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: spacing.xs,
   },
   pipelineCard: {
     width: '100%',
@@ -282,7 +334,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statusContainer: {
-    flex: 1,
+    width: '100%',
+    paddingVertical: spacing.lg,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -296,9 +349,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   captureButton: {
-    width: 184,
-    height: 184,
-    borderRadius: 92,
+    width: '100%',
+    maxWidth: 360,
+    minHeight: 64,
+    borderRadius: radius.md,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
@@ -308,19 +362,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },
-  innerCircle: {
-    width: 152,
-    height: 152,
-    borderRadius: 76,
-    borderWidth: 4,
-    borderColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   captureButtonText: {
     color: 'white',
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '900',
+  },
+  captureButtonSubtext: {
+    color: '#D7EEF4',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2,
   },
   backButton: {
     padding: spacing.md,

@@ -264,6 +264,9 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.md,
     paddingBottom: spacing.xl,
+    width: '100%',
+    maxWidth: 980,
+    alignSelf: 'center',
   },
   exportPanel: {
     backgroundColor: colors.surface,
