@@ -21,9 +21,10 @@ const RecordingsScreen = ({ navigation }: any) => {
     setErrorMessage('');
 
     try {
-      const [recordingData, predictionData] = await Promise.all([
+      const [recordingData, predictionData, trainingExport] = await Promise.all([
         recordingApi.getRecordings(),
         predictionApi.getPredictions(),
+        datasetExportApi.exportRecordings(),
       ]);
 
       setRecordings(
@@ -33,6 +34,7 @@ const RecordingsScreen = ({ navigation }: any) => {
         )
       );
       setPredictions(predictionData);
+      setExportData(trainingExport);
     } catch {
       setErrorMessage('Unable to load recordings.');
     } finally {
@@ -56,12 +58,25 @@ const RecordingsScreen = ({ navigation }: any) => {
     return lookup;
   }, [predictions]);
 
+  const exportByRecording = useMemo(() => {
+    const lookup = new Map<number, TrainingExport['manifest']['samples'][number]>();
+    exportData?.manifest.samples.forEach((sample) => {
+      lookup.set(sample.recording_id, sample);
+    });
+    return lookup;
+  }, [exportData]);
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString();
   };
 
   const renderItem = ({ item }: { item: Recording }) => {
     const prediction = predictionByRecording.get(item.id);
+    const exportSample = exportByRecording.get(item.id);
+    const label = exportSample?.gesture_code;
+    const rowsExported = exportSample?.rows_exported;
+    const isHardwareImport = item.sample_rate === 8 && item.sensor_count === 6 && !!label;
+
     return (
       <View style={styles.recordingCard}>
         <View style={styles.cardHeader}>
@@ -69,10 +84,23 @@ const RecordingsScreen = ({ navigation }: any) => {
             <Text style={styles.recordingTitle}>Recording #{item.id}</Text>
             <Text style={styles.recordingDate}>{formatDate(item.created_at)}</Text>
           </View>
-          <View style={[styles.statusBadge, prediction ? styles.predictedBadge : styles.rawBadge]}>
-            <Text style={styles.statusBadgeText}>{prediction ? 'Predicted' : item.status || 'Raw'}</Text>
+          <View style={[styles.statusBadge, label ? styles.labeledBadge : prediction ? styles.predictedBadge : styles.rawBadge]}>
+            <Text style={styles.statusBadgeText}>{label || (prediction ? 'Predicted' : item.status || 'Raw')}</Text>
           </View>
         </View>
+
+        {label && (
+          <View style={styles.labelPanel}>
+            <View>
+              <Text style={styles.metaLabel}>Training Label</Text>
+              <Text style={styles.labelValue}>{label}</Text>
+            </View>
+            <View style={styles.labelSide}>
+              <Text style={styles.metaLabel}>Rows</Text>
+              <Text style={styles.labelValue}>{rowsExported ?? '-'}</Text>
+            </View>
+          </View>
+        )}
 
         <View style={styles.metaGrid}>
           <View style={styles.metaItem}>
@@ -82,6 +110,10 @@ const RecordingsScreen = ({ navigation }: any) => {
           <View style={styles.metaItem}>
             <Text style={styles.metaLabel}>Sensors</Text>
             <Text style={styles.metaValue}>{item.sensor_count || '-'}</Text>
+          </View>
+          <View style={styles.metaItem}>
+            <Text style={styles.metaLabel}>{isHardwareImport ? 'Source' : 'Rate'}</Text>
+            <Text style={styles.metaValue}>{isHardwareImport ? 'Hardware serial' : item.sample_rate ? `${item.sample_rate}Hz` : '-'}</Text>
           </View>
           <View style={styles.metaItem}>
             <Text style={styles.metaLabel}>Rate</Text>
@@ -372,6 +404,9 @@ const styles = StyleSheet.create({
   predictedBadge: {
     backgroundColor: colors.success,
   },
+  labeledBadge: {
+    backgroundColor: colors.primary,
+  },
   rawBadge: {
     backgroundColor: colors.warning,
   },
@@ -385,6 +420,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     rowGap: spacing.sm,
+  },
+  labelPanel: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+  },
+  labelValue: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: 2,
+  },
+  labelSide: {
+    alignItems: 'flex-end',
   },
   metaItem: {
     width: '50%',
