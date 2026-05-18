@@ -112,6 +112,40 @@ const RecordingsScreen = ({ navigation }: any) => {
     const rowsExported = exportSample?.rows_exported;
     const isHardwareImport = isHardwareRecording(item);
 
+    if (isHardwareImport) {
+      return (
+        <View style={styles.hardwareCard}>
+          <View style={styles.hardwareHeader}>
+            <View>
+              <Text style={styles.hardwareTitle}>Recording #{item.id}</Text>
+              <Text style={styles.recordingDate}>{formatDate(item.created_at)}</Text>
+            </View>
+            <View style={[styles.statusBadge, styles.labeledBadge]}>
+              <Text style={styles.statusBadgeText}>{label}</Text>
+            </View>
+          </View>
+          <View style={styles.hardwareStats}>
+            <View style={styles.hardwareStat}>
+              <Text style={styles.metaLabel}>Label</Text>
+              <Text style={styles.hardwareStatValue}>{label}</Text>
+            </View>
+            <View style={styles.hardwareStat}>
+              <Text style={styles.metaLabel}>Source</Text>
+              <Text style={styles.hardwareStatValue}>Hardware serial</Text>
+            </View>
+            <View style={styles.hardwareStatSmall}>
+              <Text style={styles.metaLabel}>Rows</Text>
+              <Text style={styles.hardwareStatValue}>{rowsExported ?? '-'}</Text>
+            </View>
+            <View style={styles.hardwareStatSmall}>
+              <Text style={styles.metaLabel}>Rate</Text>
+              <Text style={styles.hardwareStatValue}>{item.sample_rate}Hz</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.recordingCard}>
         <View style={styles.cardHeader}>
@@ -465,6 +499,44 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     marginBottom: spacing.md,
     ...shadow,
+  },
+  hardwareCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: spacing.sm,
+  },
+  hardwareHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  hardwareTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  hardwareStats: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  hardwareStat: {
+    flex: 1,
+    minWidth: 95,
+  },
+  hardwareStatSmall: {
+    width: 58,
+  },
+  hardwareStatValue: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '900',
+    marginTop: 2,
   },
   cardHeader: {
     flexDirection: 'row',
