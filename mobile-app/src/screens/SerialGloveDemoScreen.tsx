@@ -5,6 +5,7 @@ import { recordingApi } from '../api/recordingApi';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
 type SerialSample = [number, number, number, number, number, number];
+type PercentRange = [number, number];
 
 type GestureResult = {
   code: string;
@@ -18,6 +19,37 @@ const GESTURE_LABELS = [
   { code: 'BOTH_BENT', phrase: 'Help' },
   { code: 'INDEX_HALF', phrase: 'Water' },
 ];
+
+const TARGET_SAMPLE_COUNT = 30;
+const STABLE_SPEECH_FRAMES = 3;
+
+const LABEL_RULES: Record<string, { index: PercentRange; middle: PercentRange; hint: string }> = {
+  REST: {
+    index: [0, 20],
+    middle: [0, 20],
+    hint: 'Keep both fingers open: Index 0-20%, Middle 0-20%.',
+  },
+  INDEX_BENT: {
+    index: [60, 100],
+    middle: [0, 20],
+    hint: 'Bend index only: Index 60-100%, Middle 0-20%.',
+  },
+  MIDDLE_BENT: {
+    index: [0, 20],
+    middle: [60, 100],
+    hint: 'Bend middle only: Index 0-20%, Middle 60-100%.',
+  },
+  BOTH_BENT: {
+    index: [60, 100],
+    middle: [60, 100],
+    hint: 'Bend both fingers: Index 60-100%, Middle 60-100%.',
+  },
+  INDEX_HALF: {
+    index: [25, 59],
+    middle: [0, 20],
+    hint: 'Hold index half bent: Index 25-59%, Middle 0-20%.',
+  },
+};
 
 const parseCsvLine = (line: string): SerialSample | null => {
   const trimmed = line.trim();
@@ -40,6 +72,14 @@ const classifySample = (sample: SerialSample | null): GestureResult => {
   if (indexPercent <= 20 && middlePercent <= 20) return { code: 'REST', phrase: 'Silent' };
 
   return { code: 'UNCERTAIN', phrase: 'Hold steady' };
+};
+
+const isInRange = (value: number, range: PercentRange) => value >= range[0] && value <= range[1];
+
+const isSampleCleanForLabel = (sample: SerialSample, label: string) => {
+  const rule = LABEL_RULES[label];
+  if (!rule) return false;
+  return isInRange(sample[2], rule.index) && isInRange(sample[5], rule.middle);
 };
 
 const speak = (phrase: string) => {
@@ -87,13 +127,17 @@ const SerialGloveDemoScreen = ({ route, navigation }: any) => {
   const readerRef = useRef<any>(null);
   const bufferRef = useRef('');
   const collectingRef = useRef(false);
+  const selectedLabelRef = useRef('BOTH_BENT');
   const lastSpokenRef = useRef('');
+  const stableCodeRef = useRef('');
+  const stableCountRef = useRef(0);
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState('Connect the Arduino USB serial stream.');
   const [lastLine, setLastLine] = useState('');
   const [latestSample, setLatestSample] = useState<SerialSample | null>(null);
   const [selectedLabel, setSelectedLabel] = useState('BOTH_BENT');
   const [collectedSamples, setCollectedSamples] = useState<SerialSample[]>([]);
+  const [rejectedSamples, setRejectedSamples] = useState(0);
   const [collecting, setCollecting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(true);
@@ -110,11 +154,28 @@ const SerialGloveDemoScreen = ({ route, navigation }: any) => {
     setLatestSample(sample);
 
     if (collectingRef.current) {
-      setCollectedSamples((current) => [...current, sample]);
+      if (isSampleCleanForLabel(sample, selectedLabelRef.current)) {
+        setCollectedSamples((current) => [...current, sample]);
+      } else {
+        setRejectedSamples((current) => current + 1);
+      }
     }
 
     const result = classifySample(sample);
-    if (speechEnabled && result.code !== lastSpokenRef.current && result.phrase !== 'Silent' && result.phrase !== 'Hold steady') {
+    if (result.code === stableCodeRef.current) {
+      stableCountRef.current += 1;
+    } else {
+      stableCodeRef.current = result.code;
+      stableCountRef.current = 1;
+    }
+
+    if (
+      speechEnabled &&
+      stableCountRef.current >= STABLE_SPEECH_FRAMES &&
+      result.code !== lastSpokenRef.current &&
+      result.phrase !== 'Silent' &&
+      result.phrase !== 'Hold steady'
+    ) {
       lastSpokenRef.current = result.code;
       speak(result.phrase);
     }
@@ -182,11 +243,15 @@ const SerialGloveDemoScreen = ({ route, navigation }: any) => {
     const next = !collectingRef.current;
     collectingRef.current = next;
     setCollecting(next);
+    if (next) {
+      setRejectedSamples(0);
+    }
     setStatus(next ? `Collecting ${selectedLabel} samples.` : 'Collection paused.');
   };
 
   const clearCollection = () => {
     setCollectedSamples([]);
+    setRejectedSamples(0);
     setStatus('Collected samples cleared.');
   };
 
@@ -212,6 +277,7 @@ const SerialGloveDemoScreen = ({ route, navigation }: any) => {
       });
       setStatus(`Uploaded ${collectedSamples.length} ${selectedLabel} samples.`);
       setCollectedSamples([]);
+      setRejectedSamples(0);
     } catch {
       setStatus('Upload failed. Check backend connection.');
     } finally {
@@ -274,7 +340,13 @@ const SerialGloveDemoScreen = ({ route, navigation }: any) => {
                 <TouchableOpacity
                   key={label.code}
                   style={[styles.labelButton, selectedLabel === label.code && styles.labelButtonActive]}
-                  onPress={() => setSelectedLabel(label.code)}
+                  onPress={() => {
+                    selectedLabelRef.current = label.code;
+                    setSelectedLabel(label.code);
+                    setCollectedSamples([]);
+                    setRejectedSamples(0);
+                    setStatus(`Ready to collect ${label.code}.`);
+                  }}
                 >
                   <Text style={[styles.labelButtonText, selectedLabel === label.code && styles.labelButtonTextActive]}>
                     {label.code}
@@ -282,10 +354,15 @@ const SerialGloveDemoScreen = ({ route, navigation }: any) => {
                 </TouchableOpacity>
               ))}
             </View>
+            <View style={styles.targetBox}>
+              <Text style={styles.targetTitle}>Target Pattern</Text>
+              <Text style={styles.targetText}>{LABEL_RULES[selectedLabel].hint}</Text>
+            </View>
 
             <View style={styles.collectStats}>
-              <Text style={styles.collectCount}>{collectedSamples.length}</Text>
-              <Text style={styles.collectMeta}>samples for {selectedLabel}</Text>
+              <Text style={styles.collectCount}>{collectedSamples.length}/{TARGET_SAMPLE_COUNT}</Text>
+              <Text style={styles.collectMeta}>clean samples for {selectedLabel}</Text>
+              <Text style={styles.rejectMeta}>{rejectedSamples} rejected while collecting</Text>
             </View>
 
             <TouchableOpacity style={collecting ? styles.stopButton : styles.primaryButton} onPress={toggleCollection} disabled={!connected}>
@@ -577,6 +654,33 @@ const styles = StyleSheet.create({
   collectMeta: {
     color: colors.textMuted,
     fontWeight: '800',
+  },
+  rejectMeta: {
+    color: colors.danger,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  targetBox: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  targetTitle: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  targetText: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
   },
 });
 
