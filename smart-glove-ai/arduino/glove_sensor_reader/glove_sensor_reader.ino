@@ -22,6 +22,17 @@ const int EXCELLENT_RANGE = 700;
 const int ADC_LOW_LIMIT = 2;
 const int ADC_HIGH_LIMIT = 4093;
 
+#ifndef A0
+#define A0 0
+#endif
+
+#ifndef A1
+#define A1 1
+#endif
+
+const int INDEX_PIN = A0;
+const int MIDDLE_PIN = A1;
+
 struct FingerCal {
   const char* name;
   int pin;
@@ -35,8 +46,8 @@ struct FingerCal {
 const int FINGER_COUNT = 2;
 
 FingerCal fingers[FINGER_COUNT] = {
-  {"INDEX",  A0, {0}, 0, 0, -1, -1},
-  {"MIDDLE", A1, {0}, 0, 0, -1, -1}
+  {"INDEX",  INDEX_PIN, {0}, 0, 0, -1, -1},
+  {"MIDDLE", MIDDLE_PIN, {0}, 0, 0, -1, -1}
 };
 
 int updateSmooth(FingerCal &finger, int raw);
