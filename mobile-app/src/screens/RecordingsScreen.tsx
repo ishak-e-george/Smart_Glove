@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { datasetExportApi, TrainingExport } from '../api/datasetExportApi';
 import { predictionApi } from '../api/predictionApi';
@@ -97,10 +97,15 @@ const RecordingsScreen = ({ navigation }: any) => {
   const softwareCount = recordings.length - hardwareCount;
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    const utcDateString = /(?:Z|[+-]\d{2}:\d{2})$/.test(dateString) ? dateString : `${dateString}Z`;
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Beirut',
+    }).format(new Date(utcDateString));
   };
 
-  const renderItem = ({ item }: { item: Recording }) => {
+  const renderItem = (item: Recording) => {
     const prediction = predictionByRecording.get(item.id);
     const exportSample = exportByRecording.get(item.id);
     const label = exportSample?.gesture_code;
@@ -202,66 +207,9 @@ const RecordingsScreen = ({ navigation }: any) => {
           <Text style={styles.loadingText}>Loading recordings</Text>
         </View>
       ) : (
-        <FlatList
-          data={visibleRecordings}
+        <ScrollView
           style={styles.list}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderItem}
           contentContainerStyle={styles.content}
-          ListHeaderComponent={
-            <>
-              <View style={styles.exportPanel}>
-                <View style={styles.exportHeader}>
-                  <View>
-                    <Text style={styles.exportTitle}>Training Export</Text>
-                    <Text style={styles.exportSubtitle}>Build a CSV-ready dataset from uploaded recordings.</Text>
-                  </View>
-                  <TouchableOpacity style={styles.exportButton} onPress={handleExport} disabled={exporting}>
-                    <Text style={styles.exportButtonText}>{exporting ? 'Exporting' : 'Export'}</Text>
-                  </TouchableOpacity>
-                </View>
-                {exportData && (
-                  <View style={styles.exportSummary}>
-                    <View style={styles.exportMetric}>
-                      <Text style={styles.exportMetricValue}>{exportData.recording_count}</Text>
-                      <Text style={styles.exportMetricLabel}>recordings</Text>
-                    </View>
-                    <View style={styles.exportMetric}>
-                      <Text style={styles.exportMetricValue}>{exportData.row_count}</Text>
-                      <Text style={styles.exportMetricLabel}>rows</Text>
-                    </View>
-                    <View style={styles.labelCounts}>
-                      {Object.entries(exportData.label_counts).map(([label, count]) => (
-                        <Text key={label} style={styles.labelCountText}>
-                          {label}: {count}
-                        </Text>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </View>
-              <View style={styles.filterPanel}>
-                <Text style={styles.sectionTitle}>Uploaded Recordings</Text>
-                <View style={styles.filterRow}>
-                  {[
-                    { key: 'hardware' as const, label: `Hardware (${hardwareCount})` },
-                    { key: 'software' as const, label: `Software (${softwareCount})` },
-                    { key: 'all' as const, label: `All (${recordings.length})` },
-                  ].map((item) => (
-                    <TouchableOpacity
-                      key={item.key}
-                      style={[styles.filterButton, filter === item.key && styles.filterButtonActive]}
-                      onPress={() => setFilter(item.key)}
-                    >
-                      <Text style={[styles.filterButtonText, filter === item.key && styles.filterButtonTextActive]}>
-                        {item.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </>
-          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -272,13 +220,70 @@ const RecordingsScreen = ({ navigation }: any) => {
               tintColor={colors.primary}
             />
           }
-          ListEmptyComponent={
+        >
+          <View style={styles.exportPanel}>
+            <View style={styles.exportHeader}>
+              <View>
+                <Text style={styles.exportTitle}>Training Export</Text>
+                <Text style={styles.exportSubtitle}>Build a CSV-ready dataset from uploaded recordings.</Text>
+              </View>
+              <TouchableOpacity style={styles.exportButton} onPress={handleExport} disabled={exporting}>
+                <Text style={styles.exportButtonText}>{exporting ? 'Exporting' : 'Export'}</Text>
+              </TouchableOpacity>
+            </View>
+            {exportData && (
+              <View style={styles.exportSummary}>
+                <View style={styles.exportMetric}>
+                  <Text style={styles.exportMetricValue}>{exportData.recording_count}</Text>
+                  <Text style={styles.exportMetricLabel}>recordings</Text>
+                </View>
+                <View style={styles.exportMetric}>
+                  <Text style={styles.exportMetricValue}>{exportData.row_count}</Text>
+                  <Text style={styles.exportMetricLabel}>rows</Text>
+                </View>
+                <View style={styles.labelCounts}>
+                  {Object.entries(exportData.label_counts).map(([label, count]) => (
+                    <Text key={label} style={styles.labelCountText}>
+                      {label}: {count}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.filterPanel}>
+            <Text style={styles.sectionTitle}>Uploaded Recordings</Text>
+            <View style={styles.filterRow}>
+              {[
+                { key: 'hardware' as const, label: `Hardware (${hardwareCount})` },
+                { key: 'software' as const, label: `Software (${softwareCount})` },
+                { key: 'all' as const, label: `All (${recordings.length})` },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[styles.filterButton, filter === item.key && styles.filterButtonActive]}
+                  onPress={() => setFilter(item.key)}
+                >
+                  <Text style={[styles.filterButtonText, filter === item.key && styles.filterButtonTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {visibleRecordings.length > 0 ? (
+            visibleRecordings.map((recording) => (
+              <View key={recording.id}>{renderItem(recording)}</View>
+            ))
+          ) : (
             <View style={styles.emptyState}>
               <Text style={styles.emptyTitle}>No Recordings</Text>
               <Text style={styles.emptyText}>No recordings match the selected filter.</Text>
             </View>
-          }
-        />
+          )}
+        </ScrollView>
       )}
     </SafeAreaView>
   );
