@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { scanForGlove, connectToGlove, startGloveStream, stopGloveStream, disconnectGlove, GloveSample } from '../services/bleGloveService';
 import { recordingApi } from '../api/recordingApi';
 import { predictionApi } from '../api/predictionApi';
-import { Device } from 'react-native-ble-plx';
+import type { Device } from 'react-native-ble-plx';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
 const HardwareCaptureScreen = ({ route, navigation }: any) => {

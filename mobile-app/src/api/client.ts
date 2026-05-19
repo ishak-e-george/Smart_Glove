@@ -1,8 +1,15 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
 
-// Change this to your local machine IP if testing on physical device
-// For Android Emulator, use http://10.0.2.2:8000
-const BASE_URL = 'http://localhost:8000/api/v1';
+const getBaseUrl = () => {
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8000/api/v1';
+  }
+
+  return 'http://localhost:8000/api/v1';
+};
+
+const BASE_URL = getBaseUrl();
 
 const client = axios.create({
   baseURL: BASE_URL,

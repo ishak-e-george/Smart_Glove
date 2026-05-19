@@ -1,4 +1,5 @@
-import { BleManager, Device, Subscription } from "react-native-ble-plx";
+import { BleManager } from "react-native-ble-plx";
+import type { Device, Subscription } from "react-native-ble-plx";
 import { decode as atob, encode as btoa } from "base-64";
 import { Platform } from "react-native";
 
@@ -9,7 +10,17 @@ export const SMART_GLOVE_BLE = {
   STATUS_UUID: "7c8f0004-7a6b-4c5d-9f2a-111111111111"
 };
 
-const manager = Platform.OS === "web" ? null : new BleManager();
+let bleInitError = "";
+let manager: BleManager | null = null;
+
+if (Platform.OS !== "web") {
+  try {
+    manager = new BleManager();
+  } catch {
+    bleInitError =
+      "BLE native module is not available in this build. Use a custom Expo dev build or Android APK to test live BLE.";
+  }
+}
 
 let activeDevice: Device | null = null;
 let sampleSubscription: Subscription | null = null;
@@ -21,7 +32,7 @@ export function scanForGlove(
   onError: (message: string) => void
 ) {
   if (!manager) {
-    onError("BLE capture is only available in the native mobile app.");
+    onError(bleInitError || "BLE capture is only available in the native mobile app.");
     return;
   }
 
@@ -44,7 +55,7 @@ export function scanForGlove(
 
 export async function connectToGlove(device: Device): Promise<Device> {
   if (!manager) {
-    throw new Error("BLE capture is only available in the native mobile app.");
+    throw new Error(bleInitError || "BLE capture is only available in the native mobile app.");
   }
 
   const connected = await device.connect();
