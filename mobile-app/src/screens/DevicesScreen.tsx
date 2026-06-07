@@ -120,6 +120,10 @@ const DevicesScreen = ({ navigation }: any) => {
               </View>
 
               <View style={styles.actionGrid}>
+                <TouchableOpacity style={[styles.actionCard, styles.bleActionCard]} onPress={() => navigation.navigate('BleLabel')}>
+                  <Text style={styles.actionTitle}>📡 BLE Label Mode</Text>
+                  <Text style={styles.actionText}>Arduino sends predictions over BLE. Phone displays and speaks instantly.</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionCard, styles.demoActionCard]} onPress={() => navigation.navigate('SpeechDemo')}>
                   <Text style={styles.actionTitle}>3D Speech Demo</Text>
                   <Text style={styles.actionText}>Visualize gestures and speak the translated words.</Text>
@@ -303,6 +307,11 @@ const styles = StyleSheet.create({
   demoActionCard: {
     borderColor: colors.primary,
     backgroundColor: '#EAF4F7',
+  },
+  bleActionCard: {
+    borderColor: colors.accent,
+    backgroundColor: '#F5F3FF',
+    flexBasis: '100%',
   },
   liveActionCard: {
     borderColor: colors.success,

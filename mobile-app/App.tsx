@@ -14,6 +14,7 @@ import ModelStatusScreen from './src/screens/ModelStatusScreen';
 import RecordingsScreen from './src/screens/RecordingsScreen';
 import SpeechDemoScreen from './src/screens/SpeechDemoScreen';
 import SerialGloveDemoScreen from './src/screens/SerialGloveDemoScreen';
+import BleLabelScreen from './src/screens/BleLabelScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -87,6 +88,11 @@ export default function App() {
             name="SerialGloveDemo"
             component={SerialGloveDemoScreen}
             options={{ title: 'Live USB Demo' }}
+          />
+          <Stack.Screen
+            name="BleLabel"
+            component={BleLabelScreen}
+            options={{ title: 'BLE Label Mode' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

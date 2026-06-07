@@ -159,6 +159,36 @@ For a 3-finger stream:
 python collect_data.py --port COM5 --feature-set 3 --label REST --samples 150 --csv ..\data\gesture_dataset_3f.csv
 ```
 
+### 5-Finger Training Dataset
+
+When the 5-finger calibration is stable, stop recalibrating and collect labeled rows.
+Use only Arduino `status` and `snap` during collection.
+
+The dedicated 5-finger dataset path is:
+
+```text
+data/raw/smart_glove_5f_dataset.csv
+```
+
+The Arduino row must contain exactly 15 numeric values:
+
+```text
+indexRaw,indexSmooth,indexPercent,middleRaw,middleSmooth,middlePercent,ringRaw,ringSmooth,ringPercent,pinkyRaw,pinkySmooth,pinkyPercent,thumbRaw,thumbSmooth,thumbPercent
+```
+
+Collect the initial 7 labels:
+
+```powershell
+cd "C:\Users\HP\Desktop\New Fyp-V1\smart-glove-ai"
+python python/collect_5f_data.py --port COM4 --label OPEN --rows 200
+python python/collect_5f_data.py --port COM4 --label INDEX_BENT --rows 200
+python python/collect_5f_data.py --port COM4 --label MIDDLE_BENT --rows 200
+python python/collect_5f_data.py --port COM4 --label RING_BENT --rows 200
+python python/collect_5f_data.py --port COM4 --label PINKY_BENT --rows 200
+python python/collect_5f_data.py --port COM4 --label THUMB_BENT --rows 200
+python python/collect_5f_data.py --port COM4 --label FIST --rows 200
+```
+
 While recording, vary:
 
 - finger pressure
@@ -187,6 +217,20 @@ For a 3-finger dataset:
 python train_model.py --feature-set 3 --csv ..\data\gesture_dataset_3f.csv --model-out ..\models\gesture_model_3f.joblib
 ```
 
+Train the dedicated 5-finger model:
+
+```powershell
+cd "C:\Users\HP\Desktop\New Fyp-V1\smart-glove-ai"
+python python/train_5f_model.py
+```
+
+This writes:
+
+```text
+data/processed/smart_glove_5f_clean.csv
+models/gesture_model_5f.joblib
+```
+
 Initial target:
 
 - acceptable: `>= 85%` accuracy
@@ -204,6 +248,74 @@ Run live prediction after training:
 ```powershell
 cd "C:\Users\HP\Desktop\New Fyp-V1\smart-glove-ai\python"
 python live_predict.py --port COM5
+```
+
+Run 5-finger live prediction with phrase speech:
+
+```powershell
+cd "C:\Users\HP\Desktop\New Fyp-V1\smart-glove-ai"
+python python/live_predict_5f.py --port COM4
+```
+
+For silent console-only testing:
+
+```powershell
+python python/live_predict_5f.py --port COM4 --no-speak
+```
+
+5-finger phrase mapping:
+
+- `OPEN` -> `Hello`
+- `INDEX_BENT` -> `Yes`
+- `MIDDLE_BENT` -> `No`
+- `RING_BENT` -> `Help`
+- `PINKY_BENT` -> `Thank you`
+- `THUMB_BENT` -> `I am okay`
+- `FIST` -> `I need assistance`
+
+### 3-Main-Finger Rescue Workflow
+
+When pinky/thumb are too noisy, use the index/middle/ring-only workflow. The rescue firmware can stream 5 percent values, and the Python scripts save/train only the first three:
+
+```text
+indexPercent,middlePercent,ringPercent
+```
+
+Dataset:
+
+```text
+data/raw/smart_glove_3main_dataset.csv
+```
+
+Collect singles first:
+
+```powershell
+cd "C:\Users\HP\Desktop\New Fyp-V1\smart-glove-ai"
+python python/collect_3main_data_burst.py --port COM4 --label REST --rows 150 --overwrite
+python python/collect_3main_data_burst.py --port COM4 --label INDEX_BENT --rows 150
+python python/collect_3main_data_burst.py --port COM4 --label MIDDLE_BENT --rows 150
+python python/collect_3main_data_burst.py --port COM4 --label RING_BENT --rows 150
+```
+
+Then collect combinations:
+
+```powershell
+python python/collect_3main_data_burst.py --port COM4 --label INDEX_MIDDLE_BENT --rows 150
+python python/collect_3main_data_burst.py --port COM4 --label INDEX_RING_BENT --rows 150
+python python/collect_3main_data_burst.py --port COM4 --label MIDDLE_RING_BENT --rows 150
+python python/collect_3main_data_burst.py --port COM4 --label ALL_THREE_BENT --rows 150
+```
+
+Train:
+
+```powershell
+python python/train_3main_model.py
+```
+
+Live one-shot demo:
+
+```powershell
+python python/live_predict_3main_oneshot.py --port COM4
 ```
 
 Default word mapping:
