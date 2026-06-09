@@ -1,0 +1,11 @@
+label,spoken_phrase,reference_basis,suitable_current_glove,needs_future_sensors,reason_for_inclusion,notes
+REST,Ready,Neutral/rest hand state,yes,no,Baseline state used to arm live prediction and prevent repeated speech,Not an ASL sign; required for stable one-shot demo flow.
+HELLO,Hello,ASL-inspired greeting vocabulary,yes,yes,Common greeting and easy demo phrase,Real ASL hello includes hand location/movement; glove version should be treated as a personalized static gesture.
+YES,Yes,ASL-inspired basic answer,yes,yes,High-value yes/no communication pair,Real ASL yes involves hand motion; glove version should use a repeatable finger-bend pattern.
+NO,No,ASL-inspired basic answer,yes,yes,High-value yes/no communication pair,Real ASL no uses index/middle/thumb motion; current glove can only approximate static finger shape.
+THANK_YOU,Thank you,ASL-inspired social phrase,maybe,yes,Useful social communication phrase,Pinky/thumb noise may make this less stable; real ASL thank-you depends on hand location/movement.
+HELP,I need help,ASL-inspired emergency phrase,maybe,yes,Emergency phrase is valuable for the FYP demo,Real ASL help is commonly two-handed; current glove should use a personalized one-hand substitute.
+PLEASE,Please,ASL-inspired polite request,yes,yes,Useful polite communication phrase,Real ASL please uses chest location/circular motion; glove version should be a custom static pattern.
+STOP,Stop,ASL-inspired safety command,maybe,yes,Useful safety phrase,Real ASL stop uses two hands/contact; current glove needs a personalized one-hand substitute.
+WATER,I need water,ASL-inspired basic need,yes,yes,Useful basic-need phrase,Real ASL water involves handshape and location; glove version can use a distinct finger-bend pattern.
+PAIN,I am in pain,ASL-inspired medical need,maybe,yes,Useful medical/emergency phrase,Real ASL pain uses location and movement; current glove should use a personalized static substitute.
