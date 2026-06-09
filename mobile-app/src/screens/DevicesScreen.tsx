@@ -124,6 +124,10 @@ const DevicesScreen = ({ navigation }: any) => {
                   <Text style={styles.actionTitle}>📡 BLE Label Mode</Text>
                   <Text style={styles.actionText}>Arduino sends predictions over BLE. Phone displays and speaks instantly.</Text>
                 </TouchableOpacity>
+                <TouchableOpacity style={[styles.actionCard, styles.wsActionCard]} onPress={() => navigation.navigate('WebSocketLabel')}>
+                  <Text style={styles.actionTitle}>🖥️ WebSocket Demo Mode</Text>
+                  <Text style={styles.actionText}>Python AI pipeline → WebSocket → Phone. Best for development demos.</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionCard, styles.demoActionCard]} onPress={() => navigation.navigate('SpeechDemo')}>
                   <Text style={styles.actionTitle}>3D Speech Demo</Text>
                   <Text style={styles.actionText}>Visualize gestures and speak the translated words.</Text>
@@ -311,6 +315,11 @@ const styles = StyleSheet.create({
   bleActionCard: {
     borderColor: colors.accent,
     backgroundColor: '#F5F3FF',
+    flexBasis: '100%',
+  },
+  wsActionCard: {
+    borderColor: colors.success,
+    backgroundColor: '#ECFDF3',
     flexBasis: '100%',
   },
   liveActionCard: {

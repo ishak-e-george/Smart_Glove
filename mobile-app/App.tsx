@@ -15,6 +15,7 @@ import RecordingsScreen from './src/screens/RecordingsScreen';
 import SpeechDemoScreen from './src/screens/SpeechDemoScreen';
 import SerialGloveDemoScreen from './src/screens/SerialGloveDemoScreen';
 import BleLabelScreen from './src/screens/BleLabelScreen';
+import WebSocketLabelScreen from './src/screens/WebSocketLabelScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -93,6 +94,11 @@ export default function App() {
             name="BleLabel"
             component={BleLabelScreen}
             options={{ title: 'BLE Label Mode' }}
+          />
+          <Stack.Screen
+            name="WebSocketLabel"
+            component={WebSocketLabelScreen}
+            options={{ title: 'WebSocket Demo' }}
           />
         </Stack.Navigator>
       </NavigationContainer>
