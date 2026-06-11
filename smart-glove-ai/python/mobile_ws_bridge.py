@@ -104,7 +104,26 @@ def values_by_feature(vals: list[int]) -> dict[str, int]:
 
 def is_rest(vals: list[int]) -> bool:
     data = values_by_feature(vals)
-    return data["index"] <= 35 and data["middle"] <= 35 and data["ring"] <= 45
+    index = data["index"]
+    middle = data["middle"]
+    ring = data["ring"]
+
+    # The ring sensor can rest slightly bent even with no hand in the glove.
+    # Treat ring-only drift as REST, while keeping NAME protected at ring >= 85.
+    if index <= 35 and middle <= 35 and ring <= 60:
+        return True
+
+    # After FEEL, the middle sensor can stay high while index/ring are relaxed.
+    # Treat that as REST drift; real FEEL still needs ring >= 55.
+    if index <= 35 and ring <= 35 and middle <= 85:
+        return True
+
+    # Low/medium decay after a gesture should reset the demo instead of
+    # keeping the state machine locked in "waiting for REST".
+    if index <= 35 and middle < 55 and ring <= 60:
+        return True
+
+    return False
 
 
 def passes_class_gate(label: str, vals: list[int]) -> bool:
@@ -120,7 +139,7 @@ def passes_class_gate(label: str, vals: list[int]) -> bool:
     if label == "NAME":
         return index <= 60 and middle <= 35 and ring >= 85
     if label == "WHERE":
-        return 35 <= index <= 70 and middle >= 55 and ring >= 85
+        return middle >= 85 and ring >= 95
     if label == "YES":
         return index >= 80 and middle >= 75 and ring >= 85
     return False
@@ -224,6 +243,11 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
     cooldown   = args.cooldown
     rest_frames = 0
     ready_sent = False
+    debug_counter = 0
+    raw_debug_counter = 0
+    last_ready_time = 0.0
+    last_mode_request = 0.0
+    last_valid_csv = time.time()
 
     while True:
         try:
@@ -231,23 +255,58 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
             with _serial.Serial(args.port, args.baud, timeout=1) as ser:
                 time.sleep(2.0)
                 ser.reset_input_buffer()
-                ser.write(b"snap\n")
+                # Opening serial resets the Arduino, so CSV mode must be enabled
+                # again after Python takes ownership of the COM port.
+                ser.write(b"m\n")
                 ser.flush()
+                last_mode_request = time.time()
+                last_valid_csv = time.time()
+                time.sleep(0.5)
                 print(f"[LIVE] Serial open. Waiting for gestures...")
+                if args.debug:
+                    print("[LIVE] Debug enabled. Showing sampled reads, predictions, REST, and gate decisions.")
 
                 while True:
                     if ser.in_waiting > 1000:
+                        if args.debug:
+                            print(f"[DBG] serial backlog={ser.in_waiting}; clearing old buffered bytes")
                         ser.reset_input_buffer()
                     raw  = ser.readline().decode(errors="ignore").strip()
+                    raw_debug_counter += 1
+                    if args.debug and (raw_debug_counter <= 20 or raw_debug_counter % 25 == 0):
+                        print(f"[RAW] {raw!r}")
+                    if "Mode: STATUS" in raw or "STATUS" in raw:
+                        if args.debug:
+                            print("[DBG] Arduino reported STATUS mode; requesting CSV mode with 'm'")
+                        ser.write(b"m\n")
+                        ser.flush()
+                        last_mode_request = time.time()
+                        time.sleep(0.1)
+                        continue
                     if not raw or raw.startswith("#"):
+                        if args.debug and raw_debug_counter <= 20:
+                            print("[DBG] skipped empty/comment line")
+                        if not raw and time.time() - last_mode_request >= 2.0:
+                            if args.debug:
+                                print("[DBG] no serial data; requesting CSV mode with 'm'")
+                            ser.write(b"m\n")
+                            ser.flush()
+                            last_mode_request = time.time()
+                        if time.time() - last_valid_csv >= 20.0:
+                            raise RuntimeError("no valid CSV received for 20 seconds")
                         continue
                     parts = raw.split(",")
                     if len(parts) < 5:
+                        if args.debug and (raw_debug_counter <= 20 or raw_debug_counter % 25 == 0):
+                            print(f"[DBG] skipped non-CSV line with {len(parts)} fields: {raw!r}")
                         continue
                     try:
                         vals = [max(0, min(100, int(float(p)))) for p in parts[:5]]
                     except ValueError:
+                        if args.debug and (raw_debug_counter <= 20 or raw_debug_counter % 25 == 0):
+                            print(f"[DBG] skipped unparsable CSV line: {raw!r}")
                         continue
+                    last_valid_csv = time.time()
 
                     live_values = values_by_feature(vals)
                     selected_vals = [live_values[feature] for feature in features]
@@ -259,21 +318,36 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
                         confidence = float(max(probs))
 
                     rest_detected = pred == "REST" or is_rest(vals)
+                    debug_counter += 1
+                    if args.debug and (debug_counter <= 20 or debug_counter % 25 == 0):
+                        print(f"[DBG] vals={vals} selected={selected_vals} pred={pred} conf={confidence:.2f} rest={rest_detected}")
                     if rest_detected:
                         rest_frames += 1
                         history.clear()
                         conf_history.clear()
+                        if args.debug and debug_counter % 10 == 0:
+                            print(f"[DBG] REST frames={rest_frames}/{args.rest_frames} vals={vals} pred={pred} conf={confidence:.2f}")
                         if rest_frames >= args.rest_frames:
                             armed = True
                             if not ready_sent:
                                 rest_packet = build_state_message("READY", "REST", vals)
+                                print(f"[TX] {rest_packet}")
                                 asyncio.run_coroutine_threadsafe(broadcast(rest_packet), loop)
                                 ready_sent = True
+                                last_ready_time = time.time()
                         continue
 
                     rest_frames = 0
 
                     if not armed:
+                        if args.debug and debug_counter % 10 == 0:
+                            print(f"[DBG] waiting_for_rest vals={vals} pred={pred} conf={confidence:.2f}")
+                        continue
+
+                    if (time.time() - last_ready_time) < args.post_rest_delay:
+                        if args.debug and debug_counter % 10 == 0:
+                            remaining = args.post_rest_delay - (time.time() - last_ready_time)
+                            print(f"[DBG] post_rest_delay {remaining:.2f}s vals={vals} pred={pred} conf={confidence:.2f}")
                         continue
 
                     history.append(pred)
@@ -281,13 +355,20 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
                     counts = Counter(history)
                     label, votes = counts.most_common(1)[0]
                     avg_conf = sum(conf_history) / len(conf_history)
+                    gate_ok = passes_class_gate(label, vals)
+
+                    if args.debug and debug_counter % 5 == 0:
+                        print(
+                            f"[DBG] vote_frame vals={vals} pred={pred} label={label} "
+                            f"votes={votes}/{min_votes} avg_conf={avg_conf:.2f} gate={gate_ok}"
+                        )
 
                     now = time.time()
                     if (
                         label != "REST"
                         and votes >= min_votes
                         and avg_conf >= min_conf
-                        and passes_class_gate(label, vals)
+                        and gate_ok
                         and (now - last_time) >= cooldown
                     ):
                         packet = build_gesture_message(label, avg_conf, vals, "WAITING_FOR_REST")
@@ -326,17 +407,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval",   type=float, default=2.5,
                         help="Seconds between fake gestures in demo mode")
     # Live mode tuning
-    parser.add_argument("--window",     type=int,   default=8,
+    parser.add_argument("--window",     type=int,   default=7,
                         help="Size of prediction rolling window (~0.5 seconds at 60ms loop)")
     parser.add_argument("--min-votes",  type=int,   default=5,
                         help="Number of matching votes required to confirm gesture")
-    parser.add_argument("--confidence", type=float, default=0.90)
+    parser.add_argument("--confidence", type=float, default=0.60)
     parser.add_argument("--rest-max",   type=int,   default=45,
                         help="Max finger percentage to qualify as REST/open hand")
-    parser.add_argument("--rest-frames", type=int, default=8,
+    parser.add_argument("--rest-frames", type=int, default=6,
                         help="Consecutive REST frames required before accepting a new gesture")
     parser.add_argument("--cooldown",   type=float, default=1.0,
                         help="Speech cooldown in seconds")
+    parser.add_argument("--post-rest-delay", type=float, default=0.7,
+                        help="Seconds to ignore transition frames after stable REST is detected")
+    parser.add_argument("--debug", action="store_true",
+                        help="Print sampled live serial values, predictions, and gate decisions")
     return parser.parse_args()
 
 

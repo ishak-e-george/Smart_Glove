@@ -16,6 +16,7 @@ import SpeechDemoScreen from './src/screens/SpeechDemoScreen';
 import SerialGloveDemoScreen from './src/screens/SerialGloveDemoScreen';
 import BleLabelScreen from './src/screens/BleLabelScreen';
 import WebSocketLabelScreen from './src/screens/WebSocketLabelScreen';
+import ModeSelectionScreen from './src/screens/ModeSelectionScreen';
 import AslProfilesScreen from './src/screens/AslProfilesScreen';
 import PhraseEditorScreen from './src/screens/PhraseEditorScreen';
 import AslHistoryScreen from './src/screens/AslHistoryScreen';
@@ -49,6 +50,11 @@ export default function App() {
             name="Login" 
             component={LoginScreen} 
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ModeSelection"
+            component={ModeSelectionScreen}
+            options={{ title: 'Choose Mode' }}
           />
           <Stack.Screen 
             name="Main" 

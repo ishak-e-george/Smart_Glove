@@ -41,7 +41,23 @@ def is_rest(values_by_feature: dict[str, int]) -> bool:
     index = values_by_feature.get("index", 0)
     middle = values_by_feature.get("middle", 0)
     ring = values_by_feature.get("ring", 0)
-    return index <= 35 and middle <= 35 and ring <= 45
+
+    # Ring can drift high at rest because of the glove/sensor shape.
+    # NAME still requires ring >= 85, so allowing REST up to 60 is safe.
+    if index <= 35 and middle <= 35 and ring <= 60:
+        return True
+
+    # After FEEL, middle can remain high while index/ring are relaxed.
+    # Real FEEL still requires ring >= 55, so this does not mask FEEL.
+    if index <= 35 and ring <= 35 and middle <= 85:
+        return True
+
+    # Low/medium decay after a gesture is rest drift for this glove.
+    # Real FEEL should still be held above this with middle/ring high.
+    if index <= 35 and middle < 55 and ring <= 60:
+        return True
+
+    return False
 
 
 def passes_class_gate(label: str, values_by_feature: dict[str, int]) -> bool:
@@ -59,7 +75,7 @@ def passes_class_gate(label: str, values_by_feature: dict[str, int]) -> bool:
         return index <= 60 and middle <= 35 and ring >= 85
 
     if label == "WHERE":
-        return 35 <= index <= 70 and middle >= 55 and ring >= 85
+        return middle >= 85 and ring >= 95
 
     if label == "YES":
         return index >= 80 and middle >= 75 and ring >= 85
@@ -91,9 +107,9 @@ def main() -> int:
     parser.add_argument("--model", default="models/glove_5word_model.joblib")
     parser.add_argument("--window", type=int, default=9)
     parser.add_argument("--min-votes", type=int, default=7)
-    parser.add_argument("--confidence", type=float, default=0.90)
+    parser.add_argument("--confidence", type=float, default=0.60)
     parser.add_argument("--rest-max", type=int, default=25)
-    parser.add_argument("--rest-frames", type=int, default=8)
+    parser.add_argument("--rest-frames", type=int, default=6)
     parser.add_argument("--cooldown", type=float, default=1.5)
     parser.add_argument("--no-tts", action="store_true")
     parser.add_argument("--debug", action="store_true")
@@ -140,11 +156,17 @@ def main() -> int:
     with serial.Serial(args.port, args.baud, timeout=1) as ser:
         time.sleep(2.0)
         ser.reset_input_buffer()
-        ser.write(b"snap\n")
+        # Opening Serial resets the Arduino. Force CSV mode for this sketch.
+        ser.write(b"m\n")
         ser.flush()
 
         while True:
             raw = ser.readline().decode(errors="ignore")
+            if "Mode: STATUS" in raw or "STATUS" in raw:
+                ser.write(b"m\n")
+                ser.flush()
+                time.sleep(0.1)
+                continue
             vals = parse_percent_line(raw)
             if vals is None:
                 continue

@@ -188,7 +188,9 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
         }
 
         if (message.label) {
-          handleGesture(message.label, message.confidence, raw);
+          handleGesture(message.label, message.confidence, raw).catch(() => {
+            setErrorMessage('Gesture received, but the app could not process the phrase.');
+          });
         }
       };
 

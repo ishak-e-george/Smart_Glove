@@ -25,7 +25,9 @@ const DevicesScreen = ({ navigation }: any) => {
       const data = await deviceApi.getDevices();
       setDevices(data);
     } catch (error) {
-      setErrorMessage('Unable to load devices.');
+      // The FYP emulator demo uses the local WebSocket ASL pipeline.
+      // Keep the legacy backend registry quiet when the API is not running.
+      setDevices([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -47,7 +49,7 @@ const DevicesScreen = ({ navigation }: any) => {
       await deviceApi.createDevice(newDevice);
       fetchDevices();
     } catch (error) {
-      setErrorMessage('Unable to register a new device.');
+      setErrorMessage('');
     }
   };
 
@@ -85,10 +87,10 @@ const DevicesScreen = ({ navigation }: any) => {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Smart Glove</Text>
-          <Text style={styles.subtitle}>{devices.length} registered device{devices.length === 1 ? '' : 's'}</Text>
+          <Text style={styles.subtitle}>ASL recognition and speech output</Text>
         </View>
         <TouchableOpacity style={styles.addButton} onPress={handleAddDevice}>
-          <Text style={styles.addButtonText}>Add Device</Text>
+          <Text style={styles.addButtonText}>Registry</Text>
         </TouchableOpacity>
       </View>
 
@@ -112,10 +114,10 @@ const DevicesScreen = ({ navigation }: any) => {
           ListHeaderComponent={
             <>
               <View style={styles.heroCard}>
-                <Text style={styles.heroLabel}>Software pipeline</Text>
-                <Text style={styles.heroTitle}>Capture, predict, translate, and improve the model.</Text>
+                <Text style={styles.heroLabel}>Presentation mode</Text>
+                <Text style={styles.heroTitle}>Selected ASL signs with multilingual speech output.</Text>
                 <Text style={styles.heroText}>
-                  Start with a device below, or review model/data status from the quick actions.
+                  Use ASL Phrase Profiles for the emulator demo. The legacy device registry is optional.
                 </Text>
               </View>
 
@@ -125,7 +127,7 @@ const DevicesScreen = ({ navigation }: any) => {
                   <Text style={styles.actionText}>Arduino sends predictions over BLE. Phone displays and speaks instantly.</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionCard, styles.wsActionCard]} onPress={() => navigation.navigate('WebSocketLabel')}>
-                  <Text style={styles.actionTitle}>ASL Phrase Profiles</Text>
+                  <Text style={styles.actionTitle}>WebSocket Demo Mode</Text>
                   <Text style={styles.actionText}>Python AI to WebSocket to phone, with default ASL and custom spoken phrase profiles.</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionCard, styles.demoActionCard]} onPress={() => navigation.navigate('SpeechDemo')}>
@@ -154,8 +156,8 @@ const DevicesScreen = ({ navigation }: any) => {
               </View>
 
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Devices</Text>
-                <Text style={styles.sectionMeta}>Tap a device to capture</Text>
+                <Text style={styles.sectionTitle}>Optional devices</Text>
+                <Text style={styles.sectionMeta}>Backend registry</Text>
               </View>
             </>
           }
@@ -171,8 +173,8 @@ const DevicesScreen = ({ navigation }: any) => {
           }
           ListEmptyComponent={
             <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>No Devices</Text>
-              <Text style={styles.emptyText}>Register a glove to begin capturing gestures.</Text>
+              <Text style={styles.emptyTitle}>Device registry not required</Text>
+              <Text style={styles.emptyText}>For the final demo, use WebSocket Demo Mode with ws://10.0.2.2:8765.</Text>
             </View>
           }
         />

@@ -18,27 +18,34 @@ export const aslSpeechService = {
   async speak(phrase: string, languageCode = 'en-US', voiceId = ''): Promise<void> {
     if (!phrase || muted) return;
     lastPhrase = phrase;
-    Speech.stop();
-    Speech.speak(phrase, {
-      language: languageCode,
-      voice: voiceId || undefined,
-      pitch: 1,
-      rate: 0.9,
-    });
+    try {
+      await Speech.stop();
+      Speech.speak(phrase, {
+        language: languageCode,
+        voice: voiceId || undefined,
+        pitch: 1,
+        rate: 0.9,
+      });
+    } catch {
+      // Some emulator images do not have every requested TTS voice installed.
+    }
   },
 
   repeat(languageCode = 'en-US', voiceId = ''): void {
     if (!lastPhrase || muted) return;
-    Speech.stop();
-    Speech.speak(lastPhrase, {
-      language: languageCode,
-      voice: voiceId || undefined,
-      pitch: 1,
-      rate: 0.9,
-    });
+    Speech.stop()
+      .catch(() => undefined)
+      .finally(() => {
+        Speech.speak(lastPhrase, {
+          language: languageCode,
+          voice: voiceId || undefined,
+          pitch: 1,
+          rate: 0.9,
+        });
+      });
   },
 
   stop(): void {
-    Speech.stop();
+    Speech.stop().catch(() => undefined);
   },
 };

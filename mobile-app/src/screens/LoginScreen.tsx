@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { authService } from '../services/authService';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
 const LoginScreen = ({ navigation }: any) => {
@@ -18,10 +17,9 @@ const LoginScreen = ({ navigation }: any) => {
     setErrorMessage('');
     setLoading(true);
     try {
-      await authService.login({ email: trimmedEmail, password });
-      navigation.replace('Main');
+      navigation.replace('ModeSelection', { email: trimmedEmail });
     } catch (error: any) {
-      setErrorMessage(error.response?.data?.detail || 'Unable to sign in. Check the API connection.');
+      setErrorMessage(error.response?.data?.detail || 'Unable to start a local user session.');
     } finally {
       setLoading(false);
     }
@@ -37,7 +35,7 @@ const LoginScreen = ({ navigation }: any) => {
           <Text style={styles.logoText}>SG</Text>
         </View>
         <Text style={styles.title}>Smart Glove</Text>
-        <Text style={styles.subtitle}>Gesture recognition console</Text>
+        <Text style={styles.subtitle}>Personal communication profile</Text>
       </View>
 
       <View style={styles.formPanel}>
@@ -77,7 +75,7 @@ const LoginScreen = ({ navigation }: any) => {
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text style={styles.buttonText}>Sign In</Text>
+            <Text style={styles.buttonText}>Continue</Text>
           )}
         </TouchableOpacity>
       </View>
