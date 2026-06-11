@@ -1,35 +1,62 @@
 export const colors = {
-  background: '#F6F8FA',
+  background: '#F4F7F9',
   surface: '#FFFFFF',
-  surfaceMuted: '#EEF3F7',
-  border: '#DDE5EC',
-  text: '#17212B',
-  textMuted: '#647382',
-  primary: '#176B87',
-  primaryDark: '#0F4C5C',
-  success: '#2E8B57',
-  warning: '#B7791F',
+  surfaceMuted: '#EEF4F7',
+  surfaceSoft: '#E8F3F5',
+  border: '#D8E3EA',
+  text: '#14212B',
+  textMuted: '#647586',
+  primary: '#11738A',
+  primaryDark: '#0B4D5D',
+  primarySoft: '#DDF1F5',
+  success: '#237A57',
+  successSoft: '#E2F5EC',
+  warning: '#B26A00',
+  warningSoft: '#FFF4DB',
   danger: '#B42318',
-  accent: '#7C3AED',
+  dangerSoft: '#FEE8E6',
+  info: '#2B6CB0',
+  infoSoft: '#E5F0FB',
+  accent: '#11738A',
+  white: '#FFFFFF',
 };
 
 export const spacing = {
+  xxs: 4,
   xs: 6,
   sm: 10,
   md: 16,
   lg: 24,
   xl: 32,
+  xxl: 40,
 };
 
 export const radius = {
   sm: 6,
   md: 8,
+  lg: 12,
+  xl: 16,
+  pill: 999,
+};
+
+export const typography = {
+  caption: 12,
+  body: 15,
+  bodyLarge: 17,
+  title: 24,
+  heading: 30,
+  display: 52,
 };
 
 export const shadow = {
   elevation: 2,
   shadowColor: '#000',
   shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.08,
-  shadowRadius: 6,
+  shadowOpacity: 0.07,
+  shadowRadius: 8,
+};
+
+export const layout = {
+  screenPadding: spacing.md,
+  buttonHeight: 48,
 };

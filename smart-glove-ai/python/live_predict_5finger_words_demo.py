@@ -37,6 +37,36 @@ except ImportError:
 DEFAULT_FEATURES = ["index", "middle", "ring", "pinky", "thumb"]
 
 
+def is_rest(values_by_feature: dict[str, int]) -> bool:
+    index = values_by_feature.get("index", 0)
+    middle = values_by_feature.get("middle", 0)
+    ring = values_by_feature.get("ring", 0)
+    return index <= 35 and middle <= 35 and ring <= 45
+
+
+def passes_class_gate(label: str, values_by_feature: dict[str, int]) -> bool:
+    index = values_by_feature.get("index", 0)
+    middle = values_by_feature.get("middle", 0)
+    ring = values_by_feature.get("ring", 0)
+
+    if label == "REST":
+        return is_rest(values_by_feature)
+
+    if label == "FEEL":
+        return index <= 35 and middle >= 55 and 55 <= ring <= 95
+
+    if label == "NAME":
+        return index <= 60 and middle <= 35 and ring >= 85
+
+    if label == "WHERE":
+        return 35 <= index <= 70 and middle >= 55 and ring >= 85
+
+    if label == "YES":
+        return index >= 80 and middle >= 75 and ring >= 85
+
+    return False
+
+
 def parse_percent_line(line: str) -> list[int] | None:
     line = line.strip()
     if not line or line.startswith("#"):
@@ -61,8 +91,9 @@ def main() -> int:
     parser.add_argument("--model", default="models/glove_5word_model.joblib")
     parser.add_argument("--window", type=int, default=9)
     parser.add_argument("--min-votes", type=int, default=7)
-    parser.add_argument("--confidence", type=float, default=0.65)
+    parser.add_argument("--confidence", type=float, default=0.90)
     parser.add_argument("--rest-max", type=int, default=25)
+    parser.add_argument("--rest-frames", type=int, default=8)
     parser.add_argument("--cooldown", type=float, default=1.5)
     parser.add_argument("--no-tts", action="store_true")
     parser.add_argument("--debug", action="store_true")
@@ -79,7 +110,7 @@ def main() -> int:
     phrases = artifact.get("phrases", {})
     features = artifact.get("features", DEFAULT_FEATURES)
 
-    if len(features) != 5:
+    if any(feature not in DEFAULT_FEATURES for feature in features):
         print(f"Model feature list is invalid: {features}")
         return 2
 
@@ -102,6 +133,7 @@ def main() -> int:
     conf_history: deque[float] = deque(maxlen=args.window)
 
     armed = False
+    rest_frames = 0
     last_time = 0.0
     announced_ready = False
 
@@ -117,7 +149,9 @@ def main() -> int:
             if vals is None:
                 continue
 
-            X_live = pd.DataFrame([vals], columns=features)
+            live_by_feature = dict(zip(DEFAULT_FEATURES, vals))
+            selected_vals = [live_by_feature[feature] for feature in features]
+            X_live = pd.DataFrame([selected_vals], columns=features)
             pred = str(model.predict(X_live)[0])
 
             confidence = 1.0
@@ -127,17 +161,27 @@ def main() -> int:
 
             # Hardware-level REST check.
             # This prevents the system from firing continuously while the hand is moving.
-            is_rest_by_values = max(vals) <= args.rest_max
-            is_rest = pred == "REST" or is_rest_by_values
+            is_rest_by_values = is_rest(live_by_feature)
+            rest_detected = pred == "REST" or is_rest_by_values
 
-            if is_rest:
+            if rest_detected:
+                rest_frames += 1
                 history.clear()
                 conf_history.clear()
+                if rest_frames < args.rest_frames:
+                    if args.debug:
+                        print(
+                            f"REST frame {rest_frames}/{args.rest_frames}: "
+                            f"{selected_vals} -> {pred}"
+                        )
+                    continue
                 armed = True
                 if not announced_ready:
                     print("REST detected. Ready for next gesture.")
                     announced_ready = True
                 continue
+
+            rest_frames = 0
 
             if not armed:
                 if args.debug:
@@ -153,13 +197,20 @@ def main() -> int:
             avg_conf = sum(conf_history) / len(conf_history)
 
             if args.debug:
-                print(f"{vals} -> {pred} conf={confidence:.2f} | majority={label} votes={votes} avg_conf={avg_conf:.2f}")
+                gate_ok = passes_class_gate(label, live_by_feature)
+                print(
+                    f"{vals} -> {pred} conf={confidence:.2f} | "
+                    f"majority={label} votes={votes} avg_conf={avg_conf:.2f} "
+                    f"gate={gate_ok}"
+                )
 
             now = time.time()
+            gate_ok = passes_class_gate(label, live_by_feature)
             if (
                 label != "REST"
                 and votes >= args.min_votes
                 and avg_conf >= args.confidence
+                and gate_ok
                 and (now - last_time) >= args.cooldown
             ):
                 phrase = phrases.get(label, label.replace("_", " ").title())

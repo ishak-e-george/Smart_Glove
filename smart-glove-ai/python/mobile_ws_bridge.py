@@ -41,10 +41,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 import time
 import threading
-import random
 from pathlib import Path
 
 try:
@@ -61,16 +61,11 @@ connected_clients: set = set()
 # ── Demo gesture table ────────────────────────────────────────────────────────
 # These are sent in demo mode.  finger order: index,middle,ring,pinky,thumb
 DEMO_GESTURES = [
-    ("HELLO",   "Hello",          0.92, [5,  5,  5,  5,  5]),
-    ("THANK_YOU", "Thank you",    0.88, [90, 85, 80, 75, 10]),
-    ("YES",     "Yes",            0.95, [95, 5,  5,  5,  5]),
-    ("NO",      "No",             0.91, [80, 80, 5,  5,  5]),
-    ("HELP",    "I need help",    0.85, [10, 5,  5,  5,  10]),
-    ("WATER",   "Water",          0.79, [95, 90, 5,  5,  10]),
-    ("SORRY",   "Sorry",          0.87, [5,  5,  5,  5,  75]),
-    ("PLEASE",  "Please",         0.90, [95, 90, 85, 80, 20]),
-    ("LOVE",    "I love you",     0.94, [5,  5,  5,  5,  90]),
-    ("REST",    "Ready",          1.00, [5,  5,  5,  5,  5]),
+    ("YES", "Yes", 0.97, [95, 85, 100, 100, 100]),
+    ("WHERE", "Where?", 0.96, [55, 72, 100, 100, 100]),
+    ("FEEL", "I feel", 0.95, [25, 65, 70, 100, 100]),
+    ("NAME", "My name is...", 0.98, [20, 0, 100, 100, 100]),
+    ("REST", "", 1.00, [0, 0, 0, 100, 100]),
 ]
 
 
@@ -78,6 +73,57 @@ def build_pipe_packet(label: str, phrase: str, confidence: float, fingers: list[
     """Build the pipe-delimited packet the mobile app expects."""
     finger_str = ",".join(str(f) for f in fingers)
     return f"{label}|{phrase}|{confidence:.2f}|{finger_str}"
+
+
+def build_gesture_message(label: str, confidence: float, fingers: list[int], state: str) -> str:
+    return json.dumps({
+        "type": "gesture_detected",
+        "label": label,
+        "confidence": round(confidence, 3),
+        "state": state,
+        "fingers": fingers,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+
+
+def build_state_message(state: str, label: str = "REST", fingers: list[int] | None = None) -> str:
+    return json.dumps({
+        "type": "system_state",
+        "state": state,
+        "label": label,
+        "confidence": 1.0 if label == "REST" else None,
+        "fingers": fingers or [],
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+
+
+def values_by_feature(vals: list[int]) -> dict[str, int]:
+    names = ["index", "middle", "ring", "pinky", "thumb"]
+    return dict(zip(names, vals))
+
+
+def is_rest(vals: list[int]) -> bool:
+    data = values_by_feature(vals)
+    return data["index"] <= 35 and data["middle"] <= 35 and data["ring"] <= 45
+
+
+def passes_class_gate(label: str, vals: list[int]) -> bool:
+    data = values_by_feature(vals)
+    index = data["index"]
+    middle = data["middle"]
+    ring = data["ring"]
+
+    if label == "REST":
+        return is_rest(vals)
+    if label == "FEEL":
+        return index <= 35 and middle >= 55 and 55 <= ring <= 95
+    if label == "NAME":
+        return index <= 60 and middle <= 35 and ring >= 85
+    if label == "WHERE":
+        return 35 <= index <= 70 and middle >= 55 and ring >= 85
+    if label == "YES":
+        return index >= 80 and middle >= 75 and ring >= 85
+    return False
 
 
 # ── WebSocket server ──────────────────────────────────────────────────────────
@@ -116,7 +162,7 @@ async def demo_loop(interval: float) -> None:
     print("[DEMO] Connect the mobile app and watch it display + speak each word\n")
     idx = 0
     # Send REST first
-    rest = build_pipe_packet("REST", "Ready", 1.00, [5, 5, 5, 5, 5])
+    rest = build_state_message("READY", "REST", [0, 0, 0, 100, 100])
     print(f"[TX] {rest}")
     await broadcast(rest)
     await asyncio.sleep(interval)
@@ -127,12 +173,12 @@ async def demo_loop(interval: float) -> None:
         if label == "REST":
             idx += 1
             continue
-        packet = build_pipe_packet(label, phrase, conf, fingers)
+        packet = build_gesture_message(label, conf, fingers, "WAITING_FOR_REST")
         print(f"[TX] {packet}")
         await broadcast(packet)
         await asyncio.sleep(interval)
         # Send REST between gestures so the app can reset
-        rest_packet = build_pipe_packet("REST", "Ready", 1.00, [5, 5, 5, 5, 5])
+        rest_packet = build_state_message("READY", "REST", [0, 0, 0, 100, 100])
         print(f"[TX] {rest_packet}")
         await broadcast(rest_packet)
         await asyncio.sleep(1.0)
@@ -162,7 +208,6 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
 
     artifact = joblib.load(model_path)
     model    = artifact["model"]
-    phrases  = artifact.get("phrases", {})
     features = artifact.get("features", ["index", "middle", "ring", "pinky", "thumb"])
 
     print(f"[LIVE] Model loaded: {model_path}")
@@ -174,10 +219,11 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
     conf_history: deque[float] = deque(maxlen=args.window)
     armed      = False
     last_time  = 0.0
-    rest_max   = args.rest_max
     min_votes  = args.min_votes
     min_conf   = args.confidence
     cooldown   = args.cooldown
+    rest_frames = 0
+    ready_sent = False
 
     while True:
         try:
@@ -203,21 +249,29 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
                     except ValueError:
                         continue
 
-                    X = pd.DataFrame([vals], columns=features)
+                    live_values = values_by_feature(vals)
+                    selected_vals = [live_values[feature] for feature in features]
+                    X = pd.DataFrame([selected_vals], columns=features)
                     pred = str(model.predict(X)[0])
                     confidence = 1.0
                     if hasattr(model, "predict_proba"):
                         probs = model.predict_proba(X)[0]
                         confidence = float(max(probs))
 
-                    is_rest = pred == "REST" or max(vals) <= rest_max
-                    if is_rest:
+                    rest_detected = pred == "REST" or is_rest(vals)
+                    if rest_detected:
+                        rest_frames += 1
                         history.clear()
                         conf_history.clear()
-                        armed = True
-                        rest_packet = build_pipe_packet("REST", "Ready", 1.00, vals)
-                        asyncio.run_coroutine_threadsafe(broadcast(rest_packet), loop)
+                        if rest_frames >= args.rest_frames:
+                            armed = True
+                            if not ready_sent:
+                                rest_packet = build_state_message("READY", "REST", vals)
+                                asyncio.run_coroutine_threadsafe(broadcast(rest_packet), loop)
+                                ready_sent = True
                         continue
+
+                    rest_frames = 0
 
                     if not armed:
                         continue
@@ -233,14 +287,15 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
                         label != "REST"
                         and votes >= min_votes
                         and avg_conf >= min_conf
+                        and passes_class_gate(label, vals)
                         and (now - last_time) >= cooldown
                     ):
-                        phrase = phrases.get(label, label.replace("_", " ").title())
-                        packet = build_pipe_packet(label, phrase, avg_conf, vals)
+                        packet = build_gesture_message(label, avg_conf, vals, "WAITING_FOR_REST")
                         print(f"[TX] {packet}")
                         asyncio.run_coroutine_threadsafe(broadcast(packet), loop)
                         last_time = now
                         armed = False
+                        ready_sent = False
                         history.clear()
                         conf_history.clear()
 
@@ -262,7 +317,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port",       default="COM4",
                         help="Arduino serial port (live mode only), e.g. COM4")
     parser.add_argument("--baud",       type=int, default=115200)
-    parser.add_argument("--model",      default="models/glove_5word_model.joblib",
+    parser.add_argument("--model",      default=str(Path(__file__).resolve().parents[1] / "models" / "asl_3finger_model.joblib"),
                         help="Path to trained .joblib model (live mode only)")
     parser.add_argument("--ws-host",    default="0.0.0.0",
                         help="WebSocket host (0.0.0.0 = accept all interfaces)")
@@ -275,9 +330,11 @@ def parse_args() -> argparse.Namespace:
                         help="Size of prediction rolling window (~0.5 seconds at 60ms loop)")
     parser.add_argument("--min-votes",  type=int,   default=5,
                         help="Number of matching votes required to confirm gesture")
-    parser.add_argument("--confidence", type=float, default=0.65)
+    parser.add_argument("--confidence", type=float, default=0.90)
     parser.add_argument("--rest-max",   type=int,   default=45,
                         help="Max finger percentage to qualify as REST/open hand")
+    parser.add_argument("--rest-frames", type=int, default=8,
+                        help="Consecutive REST frames required before accepting a new gesture")
     parser.add_argument("--cooldown",   type=float, default=1.0,
                         help="Speech cooldown in seconds")
     return parser.parse_args()

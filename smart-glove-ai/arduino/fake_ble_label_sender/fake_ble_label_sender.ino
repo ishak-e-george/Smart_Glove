@@ -1,145 +1,436 @@
-/**
- * fake_ble_label_sender.ino
- * Board: Arduino Nano 33 BLE Rev2
- *
- * PURPOSE: Test milestone — prove the BLE → Mobile App → Speech pipeline
- *          works BEFORE moving the real AI model onto Arduino.
- *
- * What it does:
- *   • Advertises as "SmartGlove" over BLE
- *   • Every 3 seconds sends a fake label packet on the label characteristic
- *   • Cycles through a list of ASL gestures so you can see each one appear
- *     on the phone and hear the phone speak it
- *
- * Packet format (matches bleLabelService.ts exactly):
- *   "LABEL|Phrase|confidence|f1,f2,f3,f4,f5"
- *   e.g. "HELLO|Hello|0.89|78,0,7,100,20"
- *
- * UUIDs (must match bleLabelService.ts):
- *   Service:  7c8f0010-7a6b-4c5d-9f2a-222222222222
- *   Label:    7c8f0011-7a6b-4c5d-9f2a-222222222222
- *
- * ── WIRING ───────────────────────────────────────────────────────────────────
- * No extra wiring needed — this sketch only uses BLE, not sensors.
- * Connect the board via USB to upload, then disconnect from USB and
- * power via battery (or keep USB connected — BLE works either way).
- *
- * ── HOW TO TEST ──────────────────────────────────────────────────────────────
- * 1. Upload this sketch to your Nano 33 BLE Rev2
- * 2. Open Serial Monitor @ 115200 to see what is being sent
- * 3. Open the mobile app → tap "BLE Label Mode" → tap "Scan for Glove"
- * 4. Watch the label appear on screen and the phone speak it
- * 5. Every 3 seconds a new gesture fires automatically
- *
- * ── NEXT STEP (after this works) ─────────────────────────────────────────────
- * Replace the fake_labels[] table with real RandomForest inference so the
- * Arduino classifies gestures from your flex sensors and sends real results.
- */
+// Smart Glove 5-Finger Calibration + CSV Percent Stream
+// Board: Arduino Nano 33 BLE Rev2
+//
+// Final wiring per finger:
+// 3.3V -> flex sensor -> analog pin -> 43k resistor -> GND
+// analog pin -> 0.1uF capacitor -> GND
+//
+// Pins:
+// INDEX  = A0
+// MIDDLE = A1
+// RING   = A2
+// PINKY  = A3
+// THUMB  = A4
+//
+// Serial Monitor:
+// 115200 baud
+// New Line
+//
+// Commands:
+// h  = help
+// o  = calibrate OPEN for all fingers
+// b1 = calibrate INDEX bent
+// b2 = calibrate MIDDLE bent
+// b3 = calibrate RING bent
+// b4 = calibrate PINKY bent
+// b5 = calibrate THUMB bent
+// p  = print calibration status
+// m  = toggle mode: STATUS / CSV
+// r  = reset calibration
 
-#include <ArduinoBLE.h>
+const int SERIAL_SPEED = 115200;
 
-// ── BLE UUIDs — must match bleLabelService.ts exactly ─────────────────────────
-#define SERVICE_UUID    "7c8f0010-7a6b-4c5d-9f2a-222222222222"
-#define LABEL_CHAR_UUID "7c8f0011-7a6b-4c5d-9f2a-222222222222"
+const int FINGER_COUNT = 5;
 
-// ── BLE objects ───────────────────────────────────────────────────────────────
-BLEService         gloveService(SERVICE_UUID);
-BLEStringCharacteristic labelChar(
-  LABEL_CHAR_UUID,
-  BLERead | BLENotify,
-  64            // max packet length in bytes
-);
-
-// ── Fake gesture table ────────────────────────────────────────────────────────
-// Format: "LABEL|Phrase|confidence|thumb,index,middle,ring,pinky"
-// Finger values are 0-100 (0 = flat, 100 = fully curled)
-const char* fake_labels[] = {
-  "HELLO|Hello|0.92|10,5,3,4,6",
-  "THANKS|Thank you|0.88|20,90,85,80,75",
-  "YES|Yes|0.95|5,95,0,0,0",
-  "NO|No|0.91|8,80,80,0,0",
-  "HELP|Help|0.85|15,10,0,0,0",
-  "WATER|Water|0.79|12,95,90,0,0",
-  "FOOD|Food|0.83|18,85,80,75,0",
-  "SORRY|Sorry|0.87|22,0,0,0,0",
-  "PLEASE|Please|0.90|30,95,90,85,80",
-  "LOVE|I love you|0.94|8,0,0,0,90",
+const int pins[FINGER_COUNT] = {
+  A0, A1, A2, A3, A4
 };
-const int LABEL_COUNT = sizeof(fake_labels) / sizeof(fake_labels[0]);
 
-int  labelIndex     = 0;
-bool centralConnected = false;
+const char* names[FINGER_COUNT] = {
+  "INDEX", "MIDDLE", "RING", "PINKY", "THUMB"
+};
 
-// ── Setup ─────────────────────────────────────────────────────────────────────
+const int WINDOW_SIZE = 10;
+const int SAMPLE_COUNT = 100;
+const int SAMPLE_DELAY_MS = 3;
+const int LOOP_DELAY_MS = 120;
+
+int readings[FINGER_COUNT][WINDOW_SIZE];
+long totals[FINGER_COUNT];
+int readIndex = 0;
+
+int rawValues[FINGER_COUNT];
+int smoothValues[FINGER_COUNT];
+
+int openValues[FINGER_COUNT];
+int bentValues[FINGER_COUNT];
+
+bool csvMode = false;
+
+char commandBuffer[16];
+int commandIndex = 0;
+
 void setup() {
-  Serial.begin(115200);
-  while (!Serial);     // wait for Serial Monitor (remove this line for battery use)
+  Serial.begin(SERIAL_SPEED);
+  analogReadResolution(12);
 
-  Serial.println("=== Fake BLE Label Sender ===");
-  Serial.println("Board: Arduino Nano 33 BLE Rev2");
-  Serial.println();
+  delay(1000);
 
-  // Onboard LED shows BLE state
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, LOW);
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    openValues[f] = -1;
+    bentValues[f] = -1;
+    totals[f] = 0;
 
-  // Init BLE
-  if (!BLE.begin()) {
-    Serial.println("ERROR: BLE init failed! Check board selection.");
-    while (true) {
-      digitalWrite(LED_BUILTIN, HIGH); delay(200);
-      digitalWrite(LED_BUILTIN, LOW);  delay(200);
+    for (int i = 0; i < WINDOW_SIZE; i++) {
+      readings[f][i] = analogRead(pins[f]);
+      totals[f] += readings[f][i];
     }
   }
 
-  // Advertise as "SmartGlove5F" — matches the name the phone scans for
-  BLE.setLocalName("SmartGlove5F");
-  BLE.setAdvertisedService(gloveService);
+  printHelp();
+}
 
-  // Add characteristic to service, service to BLE
-  gloveService.addCharacteristic(labelChar);
-  BLE.addService(gloveService);
+void loop() {
+  updateReadings();
+  handleSerialCommands();
 
-  // Write an initial value so the characteristic exists
-  labelChar.writeValue("READY|Ready|1.00|0,0,0,0,0");
+  if (csvMode) {
+    printCSV();
+  } else {
+    printLiveStatus();
+  }
 
-  BLE.advertise();
-  Serial.println("BLE advertising as 'SmartGlove5F'");
-  Serial.println("Waiting for phone connection...");
+  delay(LOOP_DELAY_MS);
+}
+
+void updateReadings() {
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    int raw = analogRead(pins[f]);
+    rawValues[f] = raw;
+
+    totals[f] -= readings[f][readIndex];
+    readings[f][readIndex] = raw;
+    totals[f] += raw;
+
+    smoothValues[f] = totals[f] / WINDOW_SIZE;
+  }
+
+  readIndex = (readIndex + 1) % WINDOW_SIZE;
+}
+
+void handleSerialCommands() {
+  while (Serial.available()) {
+    char c = Serial.read();
+
+    if (c == '\n' || c == '\r') {
+      if (commandIndex > 0) {
+        commandBuffer[commandIndex] = '\0';
+        processCommand(commandBuffer);
+        commandIndex = 0;
+      }
+    } else {
+      if (commandIndex < 15) {
+        commandBuffer[commandIndex++] = c;
+      }
+    }
+  }
+}
+
+void processCommand(char* cmd) {
+  toLowerCase(cmd);
+
+  if (equals(cmd, "h")) {
+    printHelp();
+  }
+  else if (equals(cmd, "o")) {
+    calibrateOpenAll();
+  }
+  else if (equals(cmd, "b1")) {
+    calibrateBentFinger(0);
+  }
+  else if (equals(cmd, "b2")) {
+    calibrateBentFinger(1);
+  }
+  else if (equals(cmd, "b3")) {
+    calibrateBentFinger(2);
+  }
+  else if (equals(cmd, "b4")) {
+    calibrateBentFinger(3);
+  }
+  else if (equals(cmd, "b5")) {
+    calibrateBentFinger(4);
+  }
+  else if (equals(cmd, "p")) {
+    printCalibrationStatus();
+  }
+  else if (equals(cmd, "m")) {
+    csvMode = !csvMode;
+
+    if (csvMode) {
+      Serial.println("# Mode changed to CSV");
+      Serial.println("# index,middle,ring,pinky,thumb");
+    } else {
+      Serial.println("# Mode changed to STATUS");
+    }
+  }
+  else if (equals(cmd, "r")) {
+    resetCalibration();
+  }
+  else {
+    Serial.print("# Unknown command: ");
+    Serial.println(cmd);
+    Serial.println("# Type h for help.");
+  }
+}
+
+void calibrateOpenAll() {
+  Serial.println("# Keep ALL fingers OPEN and still.");
+  Serial.println("# Sampling in 1 second...");
+  delay(1000);
+
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    openValues[f] = medianSample(pins[f]);
+  }
+
+  Serial.println("# OPEN calibration saved for all fingers.");
+  printCalibrationStatus();
+}
+
+void calibrateBentFinger(int finger) {
+  Serial.print("# Keep ");
+  Serial.print(names[finger]);
+  Serial.println(" fully BENT safely and still.");
+  Serial.println("# Sampling in 1 second...");
+  delay(1000);
+
+  bentValues[finger] = medianSample(pins[finger]);
+
+  Serial.print("# Saved ");
+  Serial.print(names[finger]);
+  Serial.print(" BENT = ");
+  Serial.println(bentValues[finger]);
+
+  printCalibrationStatus();
+}
+
+int medianSample(int pin) {
+  int samples[SAMPLE_COUNT];
+
+  for (int i = 0; i < SAMPLE_COUNT; i++) {
+    samples[i] = analogRead(pin);
+    delay(SAMPLE_DELAY_MS);
+  }
+
+  sortSamples(samples, SAMPLE_COUNT);
+
+  return samples[SAMPLE_COUNT / 2];
+}
+
+void sortSamples(int values[], int count) {
+  for (int i = 1; i < count; i++) {
+    int key = values[i];
+    int j = i - 1;
+
+    while (j >= 0 && values[j] > key) {
+      values[j + 1] = values[j];
+      j--;
+    }
+
+    values[j + 1] = key;
+  }
+}
+
+int computePercent(int finger, int smooth) {
+  if (openValues[finger] == -1 || bentValues[finger] == -1) {
+    return -1;
+  }
+
+  int openValue = openValues[finger];
+  int bentValue = bentValues[finger];
+  int range = abs(openValue - bentValue);
+
+  if (range < 20) {
+    return -1;
+  }
+
+  float percent;
+
+  if (bentValue > openValue) {
+    percent = ((float)(smooth - openValue) / (float)range) * 100.0;
+  } else {
+    percent = ((float)(openValue - smooth) / (float)range) * 100.0;
+  }
+
+  int finalPercent = constrain((int)percent, 0, 100);
+
+  if (finalPercent < 8) {
+    finalPercent = 0;
+  }
+
+  return finalPercent;
+}
+
+void printLiveStatus() {
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    int percent = computePercent(f, smoothValues[f]);
+    int range = getRange(f);
+
+    Serial.print(names[f]);
+
+    Serial.print(" raw=");
+    Serial.print(rawValues[f]);
+
+    Serial.print(" smooth=");
+    Serial.print(smoothValues[f]);
+
+    Serial.print(" open=");
+    printValueOrNA(openValues[f]);
+
+    Serial.print(" bent=");
+    printValueOrNA(bentValues[f]);
+
+    Serial.print(" range=");
+    printValueOrNA(range);
+
+    Serial.print(" percent=");
+    printValueOrNA(percent);
+
+    if (range != -1) {
+      Serial.print(" quality=");
+      printQuality(range);
+    }
+
+    if (f < FINGER_COUNT - 1) {
+      Serial.print(" | ");
+    }
+  }
+
   Serial.println();
 }
 
-// ── Loop ──────────────────────────────────────────────────────────────────────
-void loop() {
-  BLEDevice central = BLE.central();
+void printCSV() {
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    int percent = computePercent(f, smoothValues[f]);
 
-  if (central) {
-    if (!centralConnected) {
-      centralConnected = true;
-      digitalWrite(LED_BUILTIN, HIGH);
-      Serial.print("Connected to: ");
-      Serial.println(central.address());
-      Serial.println("Sending a label every 3 seconds...");
-      Serial.println();
+    if (percent == -1) {
+      percent = 0;
     }
 
-    while (central.connected()) {
-      // Send next fake label
-      const char* packet = fake_labels[labelIndex];
-      labelChar.writeValue(packet);
+    Serial.print(percent);
 
-      Serial.print("[TX] ");
-      Serial.println(packet);
-
-      labelIndex = (labelIndex + 1) % LABEL_COUNT;
-
-      delay(3000);  // 3-second interval — adjust as needed
+    if (f < FINGER_COUNT - 1) {
+      Serial.print(",");
     }
-
-    // Disconnected
-    centralConnected = false;
-    digitalWrite(LED_BUILTIN, LOW);
-    Serial.println();
-    Serial.println("Phone disconnected. Waiting for reconnect...");
   }
+
+  Serial.println();
+}
+
+void printCalibrationStatus() {
+  Serial.println();
+  Serial.println("# Calibration status:");
+
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    int range = getRange(f);
+
+    Serial.print("# ");
+    Serial.print(f + 1);
+    Serial.print(": ");
+    Serial.print(names[f]);
+
+    Serial.print(" pin=A");
+    Serial.print(f);
+
+    Serial.print(" open=");
+    printValueOrNA(openValues[f]);
+
+    Serial.print(" bent=");
+    printValueOrNA(bentValues[f]);
+
+    Serial.print(" range=");
+    printValueOrNA(range);
+
+    Serial.print(" quality=");
+    if (range == -1) {
+      Serial.print("N/A");
+    } else {
+      printQuality(range);
+    }
+
+    Serial.println();
+  }
+
+  Serial.println();
+}
+
+int getRange(int finger) {
+  if (openValues[finger] == -1 || bentValues[finger] == -1) {
+    return -1;
+  }
+
+  return abs(openValues[finger] - bentValues[finger]);
+}
+
+void printQuality(int range) {
+  if (range < 40) {
+    Serial.print("BAD");
+  } else if (range < 80) {
+    Serial.print("WEAK_BUT_USABLE");
+  } else if (range < 150) {
+    Serial.print("USABLE");
+  } else {
+    Serial.print("GOOD");
+  }
+}
+
+void resetCalibration() {
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    openValues[f] = -1;
+    bentValues[f] = -1;
+  }
+
+  csvMode = false;
+
+  Serial.println("# Calibration reset.");
+}
+
+void printValueOrNA(int value) {
+  if (value == -1) {
+    Serial.print("N/A");
+  } else {
+    Serial.print(value);
+  }
+}
+
+bool equals(char* a, const char* b) {
+  int i = 0;
+
+  while (a[i] != '\0' && b[i] != '\0') {
+    if (a[i] != b[i]) {
+      return false;
+    }
+    i++;
+  }
+
+  return a[i] == '\0' && b[i] == '\0';
+}
+
+void toLowerCase(char* text) {
+  for (int i = 0; text[i] != '\0'; i++) {
+    if (text[i] >= 'A' && text[i] <= 'Z') {
+      text[i] = text[i] + 32;
+    }
+  }
+}
+
+void printHelp() {
+  Serial.println();
+  Serial.println("# Smart Glove 5-Finger Calibration + CSV Percent Stream");
+  Serial.println("# Board: Arduino Nano 33 BLE Rev2");
+  Serial.println("# Wiring: 3.3V -> flex -> analog pin -> 43k resistor -> GND");
+  Serial.println("# Capacitor: analog pin -> 0.1uF -> GND");
+  Serial.println("# Serial Monitor: 115200 baud, New Line");
+  Serial.println();
+  Serial.println("# Commands:");
+  Serial.println("# h  = help");
+  Serial.println("# o  = calibrate OPEN for all fingers");
+  Serial.println("# b1 = calibrate INDEX bent");
+  Serial.println("# b2 = calibrate MIDDLE bent");
+  Serial.println("# b3 = calibrate RING bent");
+  Serial.println("# b4 = calibrate PINKY bent");
+  Serial.println("# b5 = calibrate THUMB bent");
+  Serial.println("# p  = print calibration status");
+  Serial.println("# m  = toggle STATUS / CSV mode");
+  Serial.println("# r  = reset calibration");
+  Serial.println();
 }

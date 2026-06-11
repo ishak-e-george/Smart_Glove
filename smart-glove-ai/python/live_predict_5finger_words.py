@@ -70,7 +70,7 @@ def main() -> int:
     phrases = artifact.get("phrases", {})
     features = artifact.get("features", DEFAULT_FEATURES)
 
-    if len(features) != 5:
+    if any(feature not in DEFAULT_FEATURES for feature in features):
         print(f"Model feature list is invalid: {features}")
         return 2
 
@@ -102,9 +102,12 @@ def main() -> int:
             if vals is None:
                 continue
 
+            live_by_feature = dict(zip(DEFAULT_FEATURES, vals))
+            selected_vals = [live_by_feature[feature] for feature in features]
+
             # Use a DataFrame with the same feature names used during training.
             # This removes the sklearn "X does not have valid feature names" warning.
-            X_live = pd.DataFrame([vals], columns=features)
+            X_live = pd.DataFrame([selected_vals], columns=features)
             pred = str(model.predict(X_live)[0])
             history.append(pred)
 

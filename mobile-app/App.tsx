@@ -16,6 +16,11 @@ import SpeechDemoScreen from './src/screens/SpeechDemoScreen';
 import SerialGloveDemoScreen from './src/screens/SerialGloveDemoScreen';
 import BleLabelScreen from './src/screens/BleLabelScreen';
 import WebSocketLabelScreen from './src/screens/WebSocketLabelScreen';
+import AslProfilesScreen from './src/screens/AslProfilesScreen';
+import PhraseEditorScreen from './src/screens/PhraseEditorScreen';
+import AslHistoryScreen from './src/screens/AslHistoryScreen';
+import AslSettingsScreen from './src/screens/AslSettingsScreen';
+import AslTrainingScreen from './src/screens/AslTrainingScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -99,6 +104,31 @@ export default function App() {
             name="WebSocketLabel"
             component={WebSocketLabelScreen}
             options={{ title: 'WebSocket Demo' }}
+          />
+          <Stack.Screen
+            name="AslProfiles"
+            component={AslProfilesScreen}
+            options={{ title: 'Profiles' }}
+          />
+          <Stack.Screen
+            name="PhraseEditor"
+            component={PhraseEditorScreen}
+            options={{ title: 'Phrase Editor' }}
+          />
+          <Stack.Screen
+            name="AslHistory"
+            component={AslHistoryScreen}
+            options={{ title: 'ASL History' }}
+          />
+          <Stack.Screen
+            name="AslSettings"
+            component={AslSettingsScreen}
+            options={{ title: 'ASL Settings' }}
+          />
+          <Stack.Screen
+            name="AslTraining"
+            component={AslTrainingScreen}
+            options={{ title: 'Custom Training' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

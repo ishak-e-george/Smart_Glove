@@ -125,8 +125,8 @@ const DevicesScreen = ({ navigation }: any) => {
                   <Text style={styles.actionText}>Arduino sends predictions over BLE. Phone displays and speaks instantly.</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionCard, styles.wsActionCard]} onPress={() => navigation.navigate('WebSocketLabel')}>
-                  <Text style={styles.actionTitle}>🖥️ WebSocket Demo Mode</Text>
-                  <Text style={styles.actionText}>Python AI pipeline → WebSocket → Phone. Best for development demos.</Text>
+                  <Text style={styles.actionTitle}>ASL Phrase Profiles</Text>
+                  <Text style={styles.actionText}>Python AI to WebSocket to phone, with default ASL and custom spoken phrase profiles.</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.actionCard, styles.demoActionCard]} onPress={() => navigation.navigate('SpeechDemo')}>
                   <Text style={styles.actionTitle}>3D Speech Demo</Text>
