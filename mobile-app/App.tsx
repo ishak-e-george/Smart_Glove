@@ -6,14 +6,6 @@ import { StatusBar } from 'expo-status-bar';
 
 import LoginScreen from './src/screens/LoginScreen';
 import DevicesScreen from './src/screens/DevicesScreen';
-import MockCaptureScreen from './src/screens/MockCaptureScreen';
-import HardwareCaptureScreen from './src/screens/HardwareCaptureScreen';
-import PhraseOutputScreen from './src/screens/PhraseOutputScreen';
-import HistoryScreen from './src/screens/HistoryScreen';
-import ModelStatusScreen from './src/screens/ModelStatusScreen';
-import RecordingsScreen from './src/screens/RecordingsScreen';
-import SpeechDemoScreen from './src/screens/SpeechDemoScreen';
-import SerialGloveDemoScreen from './src/screens/SerialGloveDemoScreen';
 import BleLabelScreen from './src/screens/BleLabelScreen';
 import WebSocketLabelScreen from './src/screens/WebSocketLabelScreen';
 import ModeSelectionScreen from './src/screens/ModeSelectionScreen';
@@ -21,7 +13,6 @@ import AslProfilesScreen from './src/screens/AslProfilesScreen';
 import PhraseEditorScreen from './src/screens/PhraseEditorScreen';
 import AslHistoryScreen from './src/screens/AslHistoryScreen';
 import AslSettingsScreen from './src/screens/AslSettingsScreen';
-import AslTrainingScreen from './src/screens/AslTrainingScreen';
 import { colors } from './src/styles/theme';
 
 const Stack = createStackNavigator();
@@ -61,46 +52,6 @@ export default function App() {
             component={DevicesScreen} 
             options={{ title: 'Smart Glove' }}
           />
-          <Stack.Screen 
-            name="MockCapture" 
-            component={MockCaptureScreen} 
-            options={{ title: 'Mock Capture' }}
-          />
-          <Stack.Screen 
-            name="HardwareCapture" 
-            component={HardwareCaptureScreen} 
-            options={{ title: 'Live Capture' }}
-          />
-          <Stack.Screen 
-            name="PhraseOutput" 
-            component={PhraseOutputScreen} 
-            options={{ title: 'Translation' }}
-          />
-          <Stack.Screen 
-            name="History" 
-            component={HistoryScreen} 
-            options={{ title: 'Prediction History' }}
-          />
-          <Stack.Screen
-            name="ModelStatus"
-            component={ModelStatusScreen}
-            options={{ title: 'Model Status' }}
-          />
-          <Stack.Screen
-            name="Recordings"
-            component={RecordingsScreen}
-            options={{ title: 'Recordings' }}
-          />
-          <Stack.Screen
-            name="SpeechDemo"
-            component={SpeechDemoScreen}
-            options={{ title: '3D Speech Demo' }}
-          />
-          <Stack.Screen
-            name="SerialGloveDemo"
-            component={SerialGloveDemoScreen}
-            options={{ title: 'Live USB Demo' }}
-          />
           <Stack.Screen
             name="BleLabel"
             component={BleLabelScreen}
@@ -109,7 +60,7 @@ export default function App() {
           <Stack.Screen
             name="WebSocketLabel"
             component={WebSocketLabelScreen}
-            options={{ title: 'WebSocket Demo' }}
+            options={{ title: 'WebSocket Live' }}
           />
           <Stack.Screen
             name="AslProfiles"
@@ -130,11 +81,6 @@ export default function App() {
             name="AslSettings"
             component={AslSettingsScreen}
             options={{ title: 'ASL Settings' }}
-          />
-          <Stack.Screen
-            name="AslTraining"
-            component={AslTrainingScreen}
-            options={{ title: 'Custom Training' }}
           />
         </Stack.Navigator>
       </NavigationContainer>

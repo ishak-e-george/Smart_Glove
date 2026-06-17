@@ -1,6 +1,7 @@
 import { GestureLabel, GestureMessage } from '../types/gesture';
+import { ASL_ALPHABET_LABELS, WORD_GESTURE_LABELS } from '../constants/defaultProfiles';
 
-const VALID_LABELS: GestureLabel[] = ['REST', 'YES', 'WHERE', 'FEEL', 'NAME'];
+const VALID_LABELS: GestureLabel[] = [...WORD_GESTURE_LABELS, ...ASL_ALPHABET_LABELS];
 
 function toGestureLabel(value: string): GestureLabel | null {
   const normalized = value.trim().toUpperCase();
@@ -14,10 +15,14 @@ export function parseGestureMessage(raw: string): GestureMessage | null {
   try {
     const parsed = JSON.parse(trimmed) as GestureMessage;
     if (parsed.type === 'gesture_detected' || parsed.type === 'system_state') {
-      const label = parsed.label ? toGestureLabel(parsed.label) : undefined;
+      const label = parsed.label ? toGestureLabel(String(parsed.label)) : undefined;
+      const leftLabel = parsed.leftLabel ? toGestureLabel(String(parsed.leftLabel)) ?? String(parsed.leftLabel) : undefined;
+      const rightLabel = parsed.rightLabel ? toGestureLabel(String(parsed.rightLabel)) ?? String(parsed.rightLabel) : undefined;
       return {
         ...parsed,
-        label: label ?? undefined,
+        label: label ?? parsed.label,
+        leftLabel,
+        rightLabel,
         raw,
       };
     }

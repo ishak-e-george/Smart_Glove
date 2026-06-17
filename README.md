@@ -1,244 +1,212 @@
-# Smart Glove AI Translation Platform
+# Smart Glove ASL Translator
 
-This project is a smart-glove software platform for converting flex-sensor gesture recordings into phrase output.
+Smart Glove is a final-year project that turns flex-sensor hand gestures into spoken ASL-oriented output. The cleaned repository now keeps only the active live path: an Expo React Native mobile app, Arduino glove firmware, Python serial/WebSocket AI bridge, current ASL alphabet data, and trained model artifacts.
 
-The current completed path is software-first:
+## What The System Does
 
-```text
-Mobile app
-  -> software or BLE capture
-  -> backend recording upload
-  -> scikit-learn gesture prediction
-  -> phrase lookup
-  -> prediction history
-  -> recordings view
-  -> training export
-```
+- Reads calibrated flex-sensor percentages from an Arduino Nano 33 BLE Rev2.
+- Runs a trained scikit-learn Random Forest classifier in Python.
+- Streams accepted gesture labels to the mobile app over WebSocket.
+- Supports one-glove and two-glove live modes.
+- Lets each mobile user choose default ASL phrases, alphabet output, both-hands output, or custom personal phrases.
+- Speaks translated output on the phone using `expo-speech`.
+- Stores local app settings, profiles, phrases, and output history in SQLite.
 
-Hardware streaming exists separately, but the stable project workflow does not depend on live hardware.
-
-## Current Capabilities
-
-- User login with JWT authentication.
-- Device registration and device list.
-- Software capture using trained 2-finger sample profiles.
-- JSON recording upload to the backend.
-- Real ML prediction from uploaded recordings.
-- Phrase output screen with prediction confidence.
-- Prediction history.
-- Recording/data screen.
-- Model and dataset status screen.
-- Training export from uploaded recordings.
-- Backend automated tests.
-- Mobile TypeScript validation.
-
-## AI Model
-
-The project uses supervised machine learning, not an LLM.
-
-- Algorithm: Random Forest classifier.
-- Library: scikit-learn.
-- Model artifact: `smart-glove-ai/models/gesture_model.joblib`.
-- Training script: `smart-glove-ai/python/train_model.py`.
-- Dataset CSV: `smart-glove-ai/data/gesture_dataset.csv`.
-- Feature set: 2-finger flex sensor features.
-
-Current trained labels:
-
-- `REST`
-- `INDEX_BENT`
-- `MIDDLE_BENT`
-
-Pending labels that need real data collection and retraining:
-
-- `BOTH_BENT` -> Help
-- `INDEX_HALF` -> Water
-
-## Database
-
-The backend uses:
-
-- FastAPI for the API.
-- SQLAlchemy for ORM.
-- Alembic for migrations.
-- PostgreSQL as the configured development database target.
-- SQLite in-memory database for tests.
-
-The database URL is controlled by `DATABASE_URL`. If it is not set, the backend defaults to:
+## Active Architecture
 
 ```text
-postgresql://postgres:postgres@localhost:5432/smart_glove
+Arduino glove firmware
+  -> serial CSV stream
+  -> Python WebSocket bridge + trained model
+  -> Expo React Native app
+  -> local profile lookup, speech output, and history
 ```
 
-## Project Structure
+There is no active backend service in the cleaned project. Old server, capture, image, and document assets were removed because they are not required by the current runtime.
+
+## Repository Layout
 
 ```text
-backend/                    FastAPI backend, database models, tests
-mobile-app/                 Expo React Native mobile app
-smart-glove-ai/             ML training, live prediction, model artifacts
-firmware/                   Arduino sketches
-serial-visualizer/          Browser serial visualizer
-serial-visualizer-react-3d/ React/Three.js visualizer with WebSocket speech
-assets/                     Mock recordings and processed assets
+mobile-app/                         Expo React Native app
+mobile-app/src/screens/             Login, mode selection, BLE, WebSocket, profiles, history, settings
+mobile-app/src/services/            Local SQLite, speech, WebSocket parsing, profile services
+mobile-app/src/constants/           Default ASL, alphabet, both-hands, and custom phrase profiles
+smart-glove-ai/arduino/             Current Arduino sketches
+smart-glove-ai/python/              Collection, training, test, and live bridge scripts
+smart-glove-ai/data/external/       Current ASL alphabet CSV data
+smart-glove-ai/models/              Current trained model artifacts
 ```
 
-## Backend Setup
-
-From the backend folder:
+## Mobile App Setup
 
 ```powershell
-cd "C:\Users\HP\Desktop\New Fyp-V1\backend"
-pip install -r requirements.txt
-alembic upgrade head
-uvicorn app.main:app --reload
-```
-
-API docs:
-
-```text
-http://127.0.0.1:8000/docs
-http://127.0.0.1:8000/redoc
-```
-
-Seed demo users, gestures, and phrases:
-
-```powershell
-cd "C:\Users\HP\Desktop\New Fyp-V1\backend"
-python -m app.scripts.seed_demo_data
-```
-
-Bootstrap a complete software demo state with user, gestures, phrases, demo device, recordings, and predictions:
-
-```powershell
-cd "C:\Users\HP\Desktop\New Fyp-V1\backend"
-python -m app.scripts.bootstrap_demo_workflow
-```
-
-Default seeded login:
-
-```text
-user@glove.com / password123
-researcher@glove.com / password123
-```
-
-## Mobile Setup
-
-From the mobile app folder:
-
-```powershell
-cd "C:\Users\HP\Desktop\New Fyp-V1\mobile-app"
+cd mobile-app
 npm install
-npx expo start --localhost --port 8081
+npx expo start
 ```
 
-The mobile API base URL is currently:
+Useful app flows:
+
+- `Login` creates or resumes a local user session.
+- `Choose Communication Mode` selects the phrase profile and speech language.
+- `WebSocket Live Mode` receives labels from the Python bridge.
+- `BLE Label Mode` receives labels directly from Arduino BLE firmware.
+- `Phrase Editor` customizes spoken phrases.
+- `ASL History` shows accepted outputs.
+- `ASL Settings` changes the WebSocket URL, speech settings, and debug options.
+
+For Android emulator WebSocket testing, use:
 
 ```text
-http://localhost:8000/api/v1
+ws://10.0.2.2:8765
 ```
 
-For a physical phone, update `mobile-app/src/api/client.ts` to use the laptop IP address instead of `localhost`.
-
-## Software Workflow
-
-1. Run the backend.
-2. Seed demo data.
-3. Run the mobile app.
-4. Log in as `user@glove.com`.
-5. Register or select a device.
-6. Choose **Model Smoke Test / Software Capture**.
-7. Select a trained gesture.
-8. Upload and predict.
-9. View phrase output.
-10. Check History.
-11. Check Data / Recordings.
-12. Export training data.
-13. Check Model Status.
-
-## Important API Endpoints
-
-Base URL:
+For a physical phone, use the laptop IP address:
 
 ```text
-http://localhost:8000/api/v1
+ws://<YOUR_LAPTOP_IP>:8765
 ```
 
-Core endpoints:
+## Python Setup
 
-- `POST /auth/login`
-- `GET /devices/`
-- `POST /devices/`
-- `POST /recordings/upload-json`
-- `GET /recordings/`
-- `POST /predictions/from-recording/{recording_id}`
-- `GET /predictions/`
-- `GET /phrases/by-gesture/{gesture_id}`
-- `GET /datasets/status/model`
-- `GET /datasets/export/recordings`
+Create and activate a Python environment, then install the live bridge and training dependencies:
+
+```powershell
+cd smart-glove-ai
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r .\python\requirements.txt
+```
+
+The Python stack uses:
+
+- `pandas`
+- `scikit-learn`
+- `joblib`
+- `pyserial`
+- `websockets`
+- `pyttsx3`
+
+## Arduino Firmware
+
+Current firmware lives in:
+
+```text
+smart-glove-ai/arduino/glove_sensor_reader/glove_sensor_reader.ino
+smart-glove-ai/arduino/fake_ble_label_sender/fake_ble_label_sender.ino
+```
+
+The main glove reader streams five normalized values:
+
+```text
+index,middle,ring,pinky,thumb
+```
+
+Calibration commands:
+
+```text
+f or fa   save flat calibration for all fingers
+c or ca   save curl calibration for all fingers
+f1..f5    save flat calibration for one finger
+c1..c5    save curl calibration for one finger
+r1..r5    reset one finger
+r or ra   reset all calibration
+s         save calibration to flash
+l         load calibration from flash
+p         print calibration status
+h         print help/status
+```
+
+Finger mapping:
+
+```text
+1 = index
+2 = middle
+3 = ring
+4 = pinky
+5 = thumb
+```
+
+## Data Collection
+
+Collect ASL alphabet rows from the Arduino serial stream:
+
+```powershell
+cd smart-glove-ai
+.\.venv\Scripts\python.exe .\python\collect_asl_alphabet_data.py --port COM4 --label A --rows 100
+```
+
+Default output:
+
+```text
+smart-glove-ai/data/external/asl_alphabet/asl_alphabet_5finger.csv
+```
+
+The CSV columns are:
+
+```text
+label,index,middle,ring,pinky,thumb
+```
+
+## Model Training
+
+Train the current ASL alphabet classifier:
+
+```powershell
+cd smart-glove-ai
+.\.venv\Scripts\python.exe .\python\train_asl_alphabet_model.py --data data\external\asl_alphabet\asl_alphabet_5finger.csv --model-out models\asl_alphabet_5finger_model.joblib
+```
+
+Current model artifacts kept in the repository:
+
+```text
+smart-glove-ai/models/asl_alphabet_5finger_model.joblib
+smart-glove-ai/models/asl_left_alphabet_model.joblib
+smart-glove-ai/models/asl_right_alphabet_model.joblib
+```
+
+## Live Bridge
+
+Single glove:
+
+```powershell
+cd smart-glove-ai
+.\.venv\Scripts\python.exe .\python\mobile_ws_bridge.py --mode live --port COM4 --model .\models\asl_alphabet_5finger_model.joblib --label-mode alphabet
+```
+
+Two gloves:
+
+```powershell
+cd smart-glove-ai
+.\.venv\Scripts\python.exe .\python\mobile_ws_bridge.py --mode live-dual --left-port COM4 --right-port COM5 --left-model .\models\asl_left_alphabet_model.joblib --right-model .\models\asl_right_alphabet_model.joblib --label-mode alphabet
+```
+
+Default WebSocket server:
+
+```text
+ws://0.0.0.0:8765
+```
 
 ## Verification
-
-Backend tests:
-
-```powershell
-cd "C:\Users\HP\Desktop\New Fyp-V1\backend"
-$env:PYTHONPATH='.'
-python -m pytest
-```
 
 Mobile TypeScript:
 
 ```powershell
-cd "C:\Users\HP\Desktop\New Fyp-V1\mobile-app"
-cmd /c npx tsc --noEmit
+cd mobile-app
+npx tsc --noEmit
 ```
 
-Current expected status:
+Python syntax:
 
-```text
-Backend tests: passing
-Mobile TypeScript: passing
+```powershell
+cd smart-glove-ai
+.\.venv\Scripts\python.exe -m py_compile .\python\mobile_ws_bridge.py .\python\collect_asl_alphabet_data.py .\python\train_asl_alphabet_model.py
 ```
 
-## Demo Guide
+Arduino verification is done from the Arduino IDE by compiling and uploading the sketches under `smart-glove-ai/arduino/`.
 
-For a short runbook, see:
+## Notes For Development
 
-```text
-README_DEMO.md
-```
-
-## Hardware Status
-
-The project includes Arduino firmware, BLE service code, serial prediction scripts, and a browser/WebSocket speech visualizer.
-
-For now, hardware is not the critical path. The software platform is complete enough to:
-
-- ingest sensor-shaped recordings,
-- classify trained gestures,
-- translate to phrases,
-- store prediction history,
-- export recordings for model training.
-
-The next hardware milestone is collecting real samples for:
-
-- `BOTH_BENT`
-- `INDEX_HALF`
-
-Then retrain the model and update the software capture options.
-
-## Known Limitations
-
-- The current trained model only supports three labels.
-- Backend ML dependencies must be installed for model artifact metadata and inference.
-- Mobile physical-device testing requires changing the API base URL from `localhost` to the laptop IP.
-- Live BLE capture still needs hardware calibration and real-device testing.
-- Training export currently returns a structured export summary and preview, not a downloaded CSV file.
-
-## Recommended Next Steps
-
-1. Collect real data for `BOTH_BENT` and `INDEX_HALF`.
-2. Retrain the Random Forest model.
-3. Update software capture options to include the new trained labels.
-4. Add downloadable CSV export if needed.
-5. Complete BLE hardware calibration and live capture testing.
+- Keep generated documents, screenshots, local-only assets, and backup datasets out of Git.
+- Add new gesture data under `smart-glove-ai/data/external/` only when it is part of the active training set.
+- Add new models under `smart-glove-ai/models/` only when the app or bridge is configured to use them.
+- Keep the mobile app backend-free unless a real server is reintroduced intentionally.

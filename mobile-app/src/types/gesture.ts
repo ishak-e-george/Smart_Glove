@@ -1,6 +1,10 @@
-export type GestureLabel = 'REST' | 'YES' | 'WHERE' | 'FEEL' | 'NAME';
+export type WordGestureLabel = 'REST' | 'YES' | 'WHERE' | 'FEEL' | 'NAME';
 
-export type GestureMode = 'DEFAULT_ASL' | 'CUSTOM';
+export type AlphabetGestureLabel = 'A' | 'B' | 'C' | 'D' | 'F' | 'I' | 'L' | 'M' | 'U' | 'V' | 'Y';
+
+export type GestureLabel = WordGestureLabel | AlphabetGestureLabel;
+
+export type GestureMode = 'DEFAULT_ASL' | 'CUSTOM' | 'ALPHABET' | 'BOTH_HANDS';
 
 export type GesturePhrase = {
   id: string;
@@ -31,7 +35,7 @@ export type GestureProfile = {
 
 export type DetectionEvent = {
   id: string;
-  label: GestureLabel;
+  label: GestureLabel | string;
   phrase: string;
   languageCode: string;
   confidence?: number;
@@ -46,10 +50,16 @@ export type SpeechLanguage = {
 
 export type GestureMessage = {
   type: 'gesture_detected' | 'system_state';
-  label?: GestureLabel;
+  label?: GestureLabel | string;
+  leftLabel?: GestureLabel | string;
+  rightLabel?: GestureLabel | string;
   confidence?: number;
+  leftConfidence?: number;
+  rightConfidence?: number;
   state?: 'READY' | 'WAITING_FOR_REST' | string;
   timestamp?: string;
   fingers?: number[];
+  leftFingers?: number[];
+  rightFingers?: number[];
   raw?: string;
 };

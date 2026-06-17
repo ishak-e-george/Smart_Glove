@@ -32,10 +32,10 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
   pill: 999,
 };
 
@@ -50,7 +50,7 @@ export const typography = {
 
 export const shadow = {
   elevation: 2,
-  shadowColor: '#000',
+  shadowColor: '#000000',
   shadowOffset: { width: 0, height: 2 },
   shadowOpacity: 0.07,
   shadowRadius: 8,
@@ -58,5 +58,5 @@ export const shadow = {
 
 export const layout = {
   screenPadding: spacing.md,
-  buttonHeight: 48,
+  buttonHeight: 52,
 };

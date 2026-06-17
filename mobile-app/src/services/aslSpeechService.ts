@@ -25,9 +25,13 @@ export const aslSpeechService = {
         voice: voiceId || undefined,
         pitch: 1,
         rate: 0.9,
+        volume: 1,
+        onError: (error) => {
+          console.warn('TTS speak failed', error);
+        },
       });
-    } catch {
-      // Some emulator images do not have every requested TTS voice installed.
+    } catch (error) {
+      console.warn('TTS unavailable', error);
     }
   },
 
@@ -41,6 +45,10 @@ export const aslSpeechService = {
           voice: voiceId || undefined,
           pitch: 1,
           rate: 0.9,
+          volume: 1,
+          onError: (error) => {
+            console.warn('TTS repeat failed', error);
+          },
         });
       });
   },

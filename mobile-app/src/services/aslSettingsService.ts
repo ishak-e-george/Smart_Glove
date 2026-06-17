@@ -1,5 +1,6 @@
 import { DEFAULT_SPEECH_LANGUAGE, DEFAULT_WS_URL } from '../constants/defaultProfiles';
 import { databaseService } from './databaseService';
+import { sessionService } from './sessionService';
 
 export type AslSettings = {
   websocketUrl: string;
@@ -11,13 +12,17 @@ export type AslSettings = {
 
 async function getSetting(key: string): Promise<string | null> {
   const db = await databaseService.getDb();
-  const rows = await db.getAllAsync<{ value: string }>('SELECT value FROM settings WHERE key = ? LIMIT 1', key);
+  const email = sessionService.getEmail();
+  const userKey = `${email}_${key}`;
+  const rows = await db.getAllAsync<{ value: string }>('SELECT value FROM settings WHERE key = ? LIMIT 1', userKey);
   return rows[0]?.value ?? null;
 }
 
 async function setSetting(key: string, value: string): Promise<void> {
   const db = await databaseService.getDb();
-  await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', key, value);
+  const email = sessionService.getEmail();
+  const userKey = `${email}_${key}`;
+  await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', userKey, value);
 }
 
 export const aslSettingsService = {
@@ -48,3 +53,4 @@ export const aslSettingsService = {
     ]);
   },
 };
+

@@ -1,4 +1,4 @@
-// Smart Glove 5-Finger Calibration + CSV Percent Stream
+// Smart Glove 5-Finger Persistent Calibration + CSV Percent Stream
 // Board: Arduino Nano 33 BLE Rev2
 //
 // Final wiring per finger:
@@ -24,11 +24,19 @@
 // b3 = calibrate RING bent
 // b4 = calibrate PINKY bent
 // b5 = calibrate THUMB bent
+// z  = rest-zero calibration
 // p  = print calibration status
+// s  = save calibration to flash
+// l  = load calibration from flash
+// e  = erase saved calibration from flash
 // m  = toggle mode: STATUS / CSV
-// r  = reset calibration
+// r  = reset calibration in RAM only
+
+#include <Arduino.h>
+#include "kvstore_global_api.h"
 
 const int SERIAL_SPEED = 115200;
+const int KV_SUCCESS = 0;
 
 const int FINGER_COUNT = 5;
 
@@ -45,6 +53,11 @@ const int SAMPLE_COUNT = 100;
 const int SAMPLE_DELAY_MS = 3;
 const int LOOP_DELAY_MS = 120;
 
+const char* KV_KEY = "/kv/smart_glove_5f_calibration";
+
+const uint32_t CAL_MAGIC = 0x53473546; // SG5F
+const uint16_t CAL_VERSION = 1;
+
 int readings[FINGER_COUNT][WINDOW_SIZE];
 long totals[FINGER_COUNT];
 int readIndex = 0;
@@ -54,11 +67,35 @@ int smoothValues[FINGER_COUNT];
 
 int openValues[FINGER_COUNT];
 int bentValues[FINGER_COUNT];
+int zeroValues[FINGER_COUNT];
+
+// Deadzone after rest-zero.
+// These help keep REST stable at 0.
+int deadZones[FINGER_COUNT] = {
+  25, 30, 25, 45, 25
+};
+
+const int defaultDeadZones[FINGER_COUNT] = {
+  25, 30, 25, 45, 25
+};
 
 bool csvMode = false;
 
 char commandBuffer[16];
 int commandIndex = 0;
+
+struct CalibrationData {
+  uint32_t magic;
+  uint16_t version;
+  uint16_t fingerCount;
+
+  int openValues[FINGER_COUNT];
+  int bentValues[FINGER_COUNT];
+  int zeroValues[FINGER_COUNT];
+  int deadZones[FINGER_COUNT];
+
+  uint32_t checksum;
+};
 
 void setup() {
   Serial.begin(SERIAL_SPEED);
@@ -66,18 +103,29 @@ void setup() {
 
   delay(1000);
 
+  resetCalibrationRAM();
+
   for (int f = 0; f < FINGER_COUNT; f++) {
-    openValues[f] = -1;
-    bentValues[f] = -1;
     totals[f] = 0;
 
     for (int i = 0; i < WINDOW_SIZE; i++) {
       readings[f][i] = analogRead(pins[f]);
       totals[f] += readings[f][i];
     }
+
+    rawValues[f] = readings[f][0];
+    smoothValues[f] = totals[f] / WINDOW_SIZE;
   }
 
   printHelp();
+
+  if (loadCalibrationFromFlash(false)) {
+    Serial.println("# Saved calibration loaded from flash.");
+    printCalibrationStatus();
+  } else {
+    Serial.println("# No valid saved calibration found.");
+    Serial.println("# Calibrate using: o, b1, b2, b3, b4, b5, z, p, s, m");
+  }
 }
 
 void loop() {
@@ -150,8 +198,20 @@ void processCommand(char* cmd) {
   else if (equals(cmd, "b5")) {
     calibrateBentFinger(4);
   }
+  else if (equals(cmd, "z")) {
+    calibrateRestZero();
+  }
   else if (equals(cmd, "p")) {
     printCalibrationStatus();
+  }
+  else if (equals(cmd, "s")) {
+    saveCalibrationToFlash();
+  }
+  else if (equals(cmd, "l")) {
+    loadCalibrationFromFlash(true);
+  }
+  else if (equals(cmd, "e")) {
+    eraseCalibrationFromFlash();
   }
   else if (equals(cmd, "m")) {
     csvMode = !csvMode;
@@ -164,7 +224,11 @@ void processCommand(char* cmd) {
     }
   }
   else if (equals(cmd, "r")) {
-    resetCalibration();
+    resetCalibrationRAM();
+    csvMode = false;
+    Serial.println("# Calibration reset in RAM only.");
+    Serial.println("# Saved flash calibration was NOT erased.");
+    Serial.println("# Use e to erase saved flash calibration.");
   }
   else {
     Serial.print("# Unknown command: ");
@@ -180,6 +244,7 @@ void calibrateOpenAll() {
 
   for (int f = 0; f < FINGER_COUNT; f++) {
     openValues[f] = medianSample(pins[f]);
+    zeroValues[f] = 0;
   }
 
   Serial.println("# OPEN calibration saved for all fingers.");
@@ -200,6 +265,27 @@ void calibrateBentFinger(int finger) {
   Serial.print(" BENT = ");
   Serial.println(bentValues[finger]);
 
+  printCalibrationStatus();
+}
+
+void calibrateRestZero() {
+  Serial.println("# Relax hand OPEN/REST and keep it still.");
+  Serial.println("# Sampling rest-zero in 1 second...");
+  delay(1000);
+
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    int restRaw = medianSample(pins[f]);
+    int basePercent = computeBasePercent(f, restRaw);
+
+    if (basePercent == -1) {
+      zeroValues[f] = 0;
+    } else {
+      zeroValues[f] = constrain(basePercent, 0, 100);
+    }
+  }
+
+  Serial.println("# Rest-zero calibration saved in RAM.");
+  Serial.println("# Send s to save it to flash.");
   printCalibrationStatus();
 }
 
@@ -230,7 +316,7 @@ void sortSamples(int values[], int count) {
   }
 }
 
-int computePercent(int finger, int smooth) {
+int computeBasePercent(int finger, int smooth) {
   if (openValues[finger] == -1 || bentValues[finger] == -1) {
     return -1;
   }
@@ -251,13 +337,25 @@ int computePercent(int finger, int smooth) {
     percent = ((float)(openValue - smooth) / (float)range) * 100.0;
   }
 
-  int finalPercent = constrain((int)percent, 0, 100);
+  return constrain((int)percent, 0, 100);
+}
 
-  if (finalPercent < 8) {
-    finalPercent = 0;
+int computePercent(int finger, int smooth) {
+  int basePercent = computeBasePercent(finger, smooth);
+
+  if (basePercent == -1) {
+    return -1;
   }
 
-  return finalPercent;
+  int adjusted = basePercent - zeroValues[finger];
+
+  if (adjusted < deadZones[finger]) {
+    adjusted = 0;
+  }
+
+  adjusted = constrain(adjusted, 0, 100);
+
+  return adjusted;
 }
 
 void printLiveStatus() {
@@ -282,8 +380,17 @@ void printLiveStatus() {
     Serial.print(" range=");
     printValueOrNA(range);
 
-    Serial.print(" percent=");
+    Serial.print(" zero=");
+    Serial.print(zeroValues[f]);
+    Serial.print("%");
+
+    Serial.print(" dz=");
+    Serial.print(deadZones[f]);
+    Serial.print("%");
+
+    Serial.print(" now=");
     printValueOrNA(percent);
+    Serial.print("%");
 
     if (range != -1) {
       Serial.print(" quality=");
@@ -322,14 +429,12 @@ void printCalibrationStatus() {
 
   for (int f = 0; f < FINGER_COUNT; f++) {
     int range = getRange(f);
+    int nowPercent = computePercent(f, smoothValues[f]);
 
     Serial.print("# ");
     Serial.print(f + 1);
-    Serial.print(": ");
+    Serial.print(":");
     Serial.print(names[f]);
-
-    Serial.print(" pin=A");
-    Serial.print(f);
 
     Serial.print(" open=");
     printValueOrNA(openValues[f]);
@@ -339,6 +444,18 @@ void printCalibrationStatus() {
 
     Serial.print(" range=");
     printValueOrNA(range);
+
+    Serial.print(" zero=");
+    Serial.print(zeroValues[f]);
+    Serial.print("%");
+
+    Serial.print(" dz=");
+    Serial.print(deadZones[f]);
+    Serial.print("%");
+
+    Serial.print(" now=");
+    printValueOrNA(nowPercent);
+    Serial.print("%");
 
     Serial.print(" quality=");
     if (range == -1) {
@@ -350,6 +467,8 @@ void printCalibrationStatus() {
     Serial.println();
   }
 
+  Serial.print("# Mode: ");
+  Serial.println(csvMode ? "CSV" : "STATUS");
   Serial.println();
 }
 
@@ -362,10 +481,12 @@ int getRange(int finger) {
 }
 
 void printQuality(int range) {
-  if (range < 40) {
+  if (range < 20) {
     Serial.print("BAD");
+  } else if (range < 40) {
+    Serial.print("WEAK_DEMO");
   } else if (range < 80) {
-    Serial.print("WEAK_BUT_USABLE");
+    Serial.print("WEAK");
   } else if (range < 150) {
     Serial.print("USABLE");
   } else {
@@ -373,15 +494,128 @@ void printQuality(int range) {
   }
 }
 
-void resetCalibration() {
+void resetCalibrationRAM() {
   for (int f = 0; f < FINGER_COUNT; f++) {
     openValues[f] = -1;
     bentValues[f] = -1;
+    zeroValues[f] = 0;
+    deadZones[f] = defaultDeadZones[f];
+  }
+}
+
+void saveCalibrationToFlash() {
+  if (!isCalibrationComplete()) {
+    Serial.println("# ERROR: Calibration is incomplete.");
+    Serial.println("# Required workflow: o, b1, b2, b3, b4, b5, z, then s");
+    return;
   }
 
-  csvMode = false;
+  CalibrationData data;
 
-  Serial.println("# Calibration reset.");
+  data.magic = CAL_MAGIC;
+  data.version = CAL_VERSION;
+  data.fingerCount = FINGER_COUNT;
+
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    data.openValues[f] = openValues[f];
+    data.bentValues[f] = bentValues[f];
+    data.zeroValues[f] = zeroValues[f];
+    data.deadZones[f] = deadZones[f];
+  }
+
+  data.checksum = 0;
+  data.checksum = calculateChecksum((const uint8_t*)&data, sizeof(CalibrationData));
+
+  int result = kv_set(KV_KEY, &data, sizeof(CalibrationData), 0);
+
+  if (result == KV_SUCCESS) {
+    Serial.println("# Calibration saved to flash successfully.");
+  } else {
+    Serial.print("# ERROR: Failed to save calibration to flash. Code=");
+    Serial.println(result);
+  }
+}
+
+bool loadCalibrationFromFlash(bool printMessages) {
+  CalibrationData data;
+  size_t actualSize = 0;
+
+  int result = kv_get(KV_KEY, &data, sizeof(CalibrationData), &actualSize);
+
+  if (result != KV_SUCCESS || actualSize != sizeof(CalibrationData)) {
+    if (printMessages) {
+      Serial.print("# ERROR: No valid calibration found in flash. Code=");
+      Serial.println(result);
+    }
+    return false;
+  }
+
+  uint32_t savedChecksum = data.checksum;
+  data.checksum = 0;
+  uint32_t computedChecksum = calculateChecksum((const uint8_t*)&data, sizeof(CalibrationData));
+
+  if (data.magic != CAL_MAGIC ||
+      data.version != CAL_VERSION ||
+      data.fingerCount != FINGER_COUNT ||
+      savedChecksum != computedChecksum) {
+    if (printMessages) {
+      Serial.println("# ERROR: Flash calibration exists but is invalid/corrupted.");
+    }
+    return false;
+  }
+
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    openValues[f] = data.openValues[f];
+    bentValues[f] = data.bentValues[f];
+    zeroValues[f] = data.zeroValues[f];
+    deadZones[f] = data.deadZones[f];
+  }
+
+  if (printMessages) {
+    Serial.println("# Calibration loaded from flash successfully.");
+    printCalibrationStatus();
+  }
+
+  return true;
+}
+
+void eraseCalibrationFromFlash() {
+  int result = kv_remove(KV_KEY);
+
+  if (result == KV_SUCCESS) {
+    Serial.println("# Saved calibration erased from flash.");
+  } else {
+    Serial.print("# ERROR: Failed to erase calibration or nothing was saved. Code=");
+    Serial.println(result);
+  }
+
+  resetCalibrationRAM();
+  csvMode = false;
+}
+
+bool isCalibrationComplete() {
+  for (int f = 0; f < FINGER_COUNT; f++) {
+    if (openValues[f] == -1 || bentValues[f] == -1) {
+      return false;
+    }
+
+    if (getRange(f) < 20) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+uint32_t calculateChecksum(const uint8_t* data, size_t length) {
+  uint32_t checksum = 2166136261UL;
+
+  for (size_t i = 0; i < length; i++) {
+    checksum ^= data[i];
+    checksum *= 16777619UL;
+  }
+
+  return checksum;
 }
 
 void printValueOrNA(int value) {
@@ -399,6 +633,7 @@ bool equals(char* a, const char* b) {
     if (a[i] != b[i]) {
       return false;
     }
+
     i++;
   }
 
@@ -415,7 +650,7 @@ void toLowerCase(char* text) {
 
 void printHelp() {
   Serial.println();
-  Serial.println("# Smart Glove 5-Finger Calibration + CSV Percent Stream");
+  Serial.println("# Smart Glove 5-Finger Persistent Calibration + CSV Percent Stream");
   Serial.println("# Board: Arduino Nano 33 BLE Rev2");
   Serial.println("# Wiring: 3.3V -> flex -> analog pin -> 43k resistor -> GND");
   Serial.println("# Capacitor: analog pin -> 0.1uF -> GND");
@@ -429,8 +664,26 @@ void printHelp() {
   Serial.println("# b3 = calibrate RING bent");
   Serial.println("# b4 = calibrate PINKY bent");
   Serial.println("# b5 = calibrate THUMB bent");
+  Serial.println("# z  = rest-zero calibration");b4
+  
   Serial.println("# p  = print calibration status");
+  Serial.println("# s  = save calibration to flash");
+  Serial.println("# l  = load calibration from flash");
+  Serial.println("# e  = erase saved calibration from flash");
   Serial.println("# m  = toggle STATUS / CSV mode");
-  Serial.println("# r  = reset calibration");
+  Serial.println("# r  = reset calibration in RAM only");
+  Serial.println();
+  Serial.println("# Recommended workflow:");
+  Serial.println("# 1. Wear glove and relax hand open");
+  Serial.println("# 2. Send: o");
+  Serial.println("# 3. Bend Index, send: b1");
+  Serial.println("# 4. Bend Middle, send: b2");
+  Serial.println("# 5. Bend Ring, send: b3");
+  Serial.println("# 6. Bend Pinky, send: b4");
+  Serial.println("# 7. Bend Thumb, send: b5");
+  Serial.println("# 8. Relax hand open again, send: z");
+  Serial.println("# 9. Send: p");
+  Serial.println("# 10. Send: s");
+  Serial.println("# 11. Send: m");
   Serial.println();
 }

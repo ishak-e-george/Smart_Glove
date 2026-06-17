@@ -1,7 +1,0 @@
-from .user_repository import user_repository
-from .device_repository import device_repository
-from .gesture_repository import gesture_repository
-from .phrase_repository import phrase_repository
-from .recording_repository import recording_repository
-from .dataset_repository import dataset_repository
-from .prediction_repository import prediction_repository

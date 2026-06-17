@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
   AppHeader,
   AppScreen,
@@ -11,7 +11,7 @@ import {
   SectionTitle,
   StatusBadge,
 } from '../components/aslUi';
-import { DEFAULT_SPEECH_LANGUAGE, DEFAULT_WS_URL, SUPPORTED_SPEECH_LANGUAGES } from '../constants/defaultProfiles';
+import { DEFAULT_ASL_PROFILE_ID, BOTH_HANDS_PROFILE_ID, DEFAULT_SPEECH_LANGUAGE, DEFAULT_WS_URL, SUPPORTED_SPEECH_LANGUAGES } from '../constants/defaultProfiles';
 import { aslHistoryService } from '../services/aslHistoryService';
 import { aslSettingsService } from '../services/aslSettingsService';
 import { aslSpeechService } from '../services/aslSpeechService';
@@ -24,6 +24,7 @@ type ConnState = 'disconnected' | 'connecting' | 'connected' | 'error';
 
 type NavigationLike = {
   navigate: (screen: string, params?: Record<string, unknown>) => void;
+  replace: (screen: string) => void;
   addListener?: (event: 'focus', callback: () => void) => () => void;
 };
 
@@ -67,6 +68,7 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
   const [languageCode, setLanguageCode] = useState(DEFAULT_SPEECH_LANGUAGE);
   const [voiceId, setVoiceId] = useState('');
   const [currentLabel, setCurrentLabel] = useState<GestureLabel | null>(null);
+  const [displayLabel, setDisplayLabel] = useState<string | null>(null);
   const [currentPhrase, setCurrentPhrase] = useState('');
   const [confidence, setConfidence] = useState<number | undefined>();
   const [systemState, setSystemState] = useState('Disconnected');
@@ -75,8 +77,28 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
   const [rawMessage, setRawMessage] = useState('');
   const [showRawMessages, setShowRawMessages] = useState(true);
   const [autoConnect, setAutoConnect] = useState(false);
+  const [leftHand, setLeftHand] = useState<number[] | null>(null);
+  const [rightHand, setRightHand] = useState<number[] | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
+
+  const [predictingState, setPredictingState] = useState<'idle' | 'predicting' | 'done'>('idle');
+  const predictingStateRef = useRef<'idle' | 'predicting' | 'done'>('idle');
+
+  const updatePredictingState = useCallback((state: 'idle' | 'predicting' | 'done') => {
+    setPredictingState(state);
+    predictingStateRef.current = state;
+  }, []);
+
+  const clearPredictionDisplay = useCallback(() => {
+    setCurrentLabel(null);
+    setDisplayLabel(null);
+    setCurrentPhrase('');
+    setConfidence(undefined);
+    setLeftHand(null);
+    setRightHand(null);
+    updatePredictingState('idle');
+  }, [updatePredictingState]);
 
   const refreshProfileState = useCallback(async () => {
     const [state, recent, settings] = await Promise.all([
@@ -111,7 +133,8 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
   const resolvePhrase = useCallback(async (label: GestureLabel) => {
     const active = await profileService.getActiveProfile();
     const settings = await aslSettingsService.getSettings();
-    const translation = await profileService.getPhraseTranslation(active.id, label, settings.speechLanguageCode);
+    const activeId = active?.id || DEFAULT_ASL_PROFILE_ID;
+    const translation = await profileService.getPhraseTranslation(activeId, label, settings.speechLanguageCode);
     return { translation, settings };
   }, []);
 
@@ -120,6 +143,7 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
 
     if (label === 'REST') {
       setCurrentLabel('REST');
+      setDisplayLabel('REST');
       setCurrentPhrase('');
       setConfidence(incomingConfidence);
       setSystemState('Ready for next gesture');
@@ -128,6 +152,7 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
 
     const { translation, settings } = await resolvePhrase(label);
     setCurrentLabel(label);
+    setDisplayLabel(label);
     setCurrentPhrase(translation.phrase);
     setConfidence(incomingConfidence);
     setSystemState('Waiting for REST');
@@ -147,6 +172,65 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
       await aslSpeechService.speak(translation.phrase, settings.speechLanguageCode, settings.speechVoiceId);
     }
   }, [resolvePhrase]);
+
+  const handleDualGesture = useCallback(async (message: ReturnType<typeof parseGestureMessage>) => {
+    if (!message) return;
+    const leftLabel = message.leftLabel ? String(message.leftLabel) : '';
+    const rightLabel = message.rightLabel ? String(message.rightLabel) : '';
+    if (!leftLabel && !rightLabel) return;
+
+    const active = await profileService.getActiveProfile();
+    const settings = await aslSettingsService.getSettings();
+    const activeId = active?.id || BOTH_HANDS_PROFILE_ID;
+
+    let leftPhrase = '';
+    let rightPhrase = '';
+
+    if (leftLabel) {
+      const leftTrans = await profileService.getPhraseTranslation(activeId, leftLabel as GestureLabel, settings.speechLanguageCode);
+      leftPhrase = leftTrans.phrase || leftLabel;
+    }
+    if (rightLabel) {
+      const rightTrans = await profileService.getPhraseTranslation(activeId, rightLabel as GestureLabel, settings.speechLanguageCode);
+      rightPhrase = rightTrans.phrase || rightLabel;
+    }
+
+    const spoken = [
+      leftLabel ? `Left ${leftPhrase}` : '',
+      rightLabel ? `Right ${rightPhrase}` : '',
+    ].filter(Boolean).join('. ');
+    const display = [
+      leftLabel ? `Left: ${leftPhrase}` : '',
+      rightLabel ? `Right: ${rightPhrase}` : '',
+    ].filter(Boolean).join(' | ');
+
+    const avgConfidence =
+      typeof message.leftConfidence === 'number' && typeof message.rightConfidence === 'number'
+        ? (message.leftConfidence + message.rightConfidence) / 2
+        : message.confidence;
+
+    setCurrentLabel(null);
+    setDisplayLabel(display || spoken);
+    setCurrentPhrase(spoken);
+    setConfidence(avgConfidence);
+    setSystemState('Waiting for REST');
+    setLanguageCode(settings.speechLanguageCode);
+    setVoiceId(settings.speechVoiceId);
+    setLeftHand(message.leftFingers ?? null);
+    setRightHand(message.rightFingers ?? null);
+
+    const nextHistory = await aslHistoryService.add({
+      label: spoken,
+      phrase: spoken,
+      languageCode: settings.speechLanguageCode,
+      confidence: avgConfidence,
+    });
+    setHistory(nextHistory);
+
+    if (!muted) {
+      await aslSpeechService.speak(spoken, settings.speechLanguageCode, settings.speechVoiceId);
+    }
+  }, [muted]);
 
   const connect = useCallback(async () => {
     wsRef.current?.close();
@@ -176,20 +260,32 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
         const message = parseGestureMessage(raw);
         if (!message) return;
         setRawMessage(raw);
+        if (message.leftFingers) setLeftHand(message.leftFingers);
+        if (message.rightFingers) setRightHand(message.rightFingers);
+        if (message.fingers && !message.leftFingers && !message.rightFingers) setRightHand(message.fingers);
 
         if (message.type === 'system_state') {
           setSystemState(message.state === 'READY' ? 'Ready for next gesture' : message.state ?? 'System update');
-          if (message.label === 'REST') {
-            setCurrentLabel('REST');
-            setCurrentPhrase('');
-            setConfidence(message.confidence);
+          if (message.state === 'READY' || message.label === 'REST') {
+            clearPredictionDisplay();
           }
           return;
         }
 
-        if (message.label) {
-          handleGesture(message.label, message.confidence, raw).catch(() => {
-            setErrorMessage('Gesture received, but the app could not process the phrase.');
+        if (message.leftLabel || message.rightLabel) {
+          if (predictingStateRef.current === 'predicting') updatePredictingState('done');
+          handleDualGesture(message).catch((err) => {
+            console.error('handleDualGesture error:', err);
+            setErrorMessage('Dual-glove gesture received, but the app could not process it: ' + (err instanceof Error ? err.message : String(err)));
+          });
+          return;
+        }
+
+        if (message.label && message.label !== 'REST') {
+          if (predictingStateRef.current === 'predicting') updatePredictingState('done');
+          handleGesture(message.label as GestureLabel, message.confidence, raw).catch((err) => {
+            console.error('handleGesture error:', err);
+            setErrorMessage('Gesture received, but the app could not process the phrase: ' + (err instanceof Error ? err.message : String(err)));
           });
         }
       };
@@ -212,7 +308,7 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
       setSystemState('Connection error');
       setErrorMessage(error instanceof Error ? error.message : 'WebSocket connection failed.');
     }
-  }, [handleGesture, wsUrl]);
+  }, [clearPredictionDisplay, handleDualGesture, handleGesture, wsUrl, updatePredictingState]);
 
   useEffect(() => {
     if (autoConnect && connState === 'disconnected') {
@@ -287,7 +383,7 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
 
       <InfoCard style={styles.heroCard}>
         <Text style={styles.cardLabel}>Detected Gesture</Text>
-        <Text style={styles.gestureText}>{currentLabel ?? '--'}</Text>
+        <Text style={styles.gestureText}>{displayLabel ?? currentLabel ?? '--'}</Text>
         <View style={styles.heroMetaRow}>
           {currentLabel && <GestureBadge label={currentLabel} />}
           <StatusBadge label={`Confidence ${formatConfidence(confidence)}`} tone="info" />
@@ -298,6 +394,41 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
         <Text style={styles.cardLabel}>Spoken Phrase</Text>
         <Text style={[styles.phraseText, isArabic && styles.rtlText]}>{phraseValue}</Text>
       </InfoCard>
+
+      {connState === 'connected' && (
+        <InfoCard tone={predictingState === 'predicting' ? 'warning' : 'primary'}>
+          <Text style={styles.cardLabel}>Manual Capture Controls</Text>
+          <View style={styles.buttonRow}>
+            {predictingState === 'idle' && (
+              <PrimaryButton
+                label="Start Capture"
+                onPress={() => updatePredictingState('predicting')}
+                style={styles.flexButton}
+              />
+            )}
+            {predictingState === 'predicting' && (
+              <SecondaryButton
+                label="Cancel Capture"
+                onPress={() => updatePredictingState('idle')}
+                style={styles.flexButton}
+              />
+            )}
+            {predictingState === 'done' && (
+              <PrimaryButton
+                label="Refresh"
+                onPress={() => {
+                  updatePredictingState('idle');
+                  setCurrentLabel(null);
+                  setDisplayLabel(null);
+                  setCurrentPhrase('');
+                  setConfidence(undefined);
+                }}
+                style={styles.flexButton}
+              />
+            )}
+          </View>
+        </InfoCard>
+      )}
 
       <InfoCard tone={stateTone(systemState)}>
         <View style={styles.cardHeader}>
@@ -314,7 +445,42 @@ const WebSocketLabelScreen = ({ navigation }: Props) => {
         <SecondaryButton label="Profiles" onPress={() => navigation.navigate('AslProfiles')} style={styles.gridButton} />
         <SecondaryButton label="History" onPress={() => navigation.navigate('AslHistory')} style={styles.gridButton} />
         <SecondaryButton label="Settings" onPress={() => navigation.navigate('AslSettings')} style={styles.gridButton} />
+        <TouchableOpacity
+          style={[
+            styles.gridButton,
+            {
+              minHeight: 52,
+              borderRadius: radius.lg,
+              backgroundColor: colors.surface,
+              borderWidth: 1,
+              borderColor: colors.danger,
+              alignItems: 'center',
+              justifyContent: 'center',
+            },
+          ]}
+          onPress={() => navigation.replace('Login')}
+          activeOpacity={0.82}
+        >
+          <Text style={{ color: colors.danger, fontWeight: '900', fontSize: typography.body }}>Logout</Text>
+        </TouchableOpacity>
       </View>
+
+      <InfoCard>
+        <SectionTitle
+          title="Two-glove telemetry"
+          subtitle="Live left and right glove finger values from the Python WebSocket bridge."
+        />
+        <View style={styles.handGrid}>
+          <View style={styles.handPanel}>
+            <Text style={styles.handTitle}>Left glove</Text>
+            <Text style={styles.handValues}>{leftHand ? leftHand.join(', ') : '--, --, --, --, --'}</Text>
+          </View>
+          <View style={styles.handPanel}>
+            <Text style={styles.handTitle}>Right glove</Text>
+            <Text style={styles.handValues}>{rightHand ? rightHand.join(', ') : '--, --, --, --, --'}</Text>
+          </View>
+        </View>
+      </InfoCard>
 
       <InfoCard>
         <SectionTitle
@@ -459,6 +625,31 @@ const styles = StyleSheet.create({
   gridButton: {
     flexGrow: 1,
     flexBasis: 150,
+  },
+  handGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  handPanel: {
+    flex: 1,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.lg,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  handTitle: {
+    color: colors.text,
+    fontWeight: '900',
+    marginBottom: spacing.xs,
+  },
+  handValues: {
+    color: colors.textMuted,
+    fontFamily: 'monospace',
+    fontSize: typography.caption,
+    fontWeight: '800',
+    lineHeight: 18,
   },
   list: {
     marginTop: spacing.md,

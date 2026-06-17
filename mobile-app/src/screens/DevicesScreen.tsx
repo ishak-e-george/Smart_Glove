@@ -1,216 +1,41 @@
-import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, FlatList, Modal, Platform, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { deviceApi, DeviceCreate } from '../api/deviceApi';
 import { colors, radius, shadow, spacing } from '../styles/theme';
 
-interface DeviceItem {
-  id: number;
-  device_name: string;
-  serial_number: string;
-  device_type: string;
-}
-
 const DevicesScreen = ({ navigation }: any) => {
-  const [devices, setDevices] = useState<DeviceItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedDevice, setSelectedDevice] = useState<DeviceItem | null>(null);
-  const [errorMessage, setErrorMessage] = useState('');
-
-  const fetchDevices = async (showSpinner = true) => {
-    if (showSpinner) setLoading(true);
-    setErrorMessage('');
-    try {
-      const data = await deviceApi.getDevices();
-      setDevices(data);
-    } catch (error) {
-      // The FYP emulator demo uses the local WebSocket ASL pipeline.
-      // Keep the legacy backend registry quiet when the API is not running.
-      setDevices([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchDevices();
-  }, []);
-
-  const handleAddDevice = async () => {
-    const newDevice: DeviceCreate = {
-      device_name: `Glove ${devices.length + 1}`,
-      serial_number: `SN-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-      device_type: 'smart_glove',
-    };
-
-    try {
-      await deviceApi.createDevice(newDevice);
-      fetchDevices();
-    } catch (error) {
-      setErrorMessage('');
-    }
-  };
-
-  const handleDevicePress = (item: DeviceItem) => {
-    setSelectedDevice(item);
-  };
-
-  const openCapture = (routeName: 'MockCapture' | 'HardwareCapture' | 'SerialGloveDemo') => {
-    if (!selectedDevice) return;
-    const deviceId = selectedDevice.id;
-    setSelectedDevice(null);
-    navigation.navigate(routeName, { deviceId });
-  };
-
-  const isWeb = Platform.OS === 'web';
-
-  const renderItem = ({ item }: { item: DeviceItem }) => (
-    <TouchableOpacity 
-      style={styles.deviceItem}
-      onPress={() => handleDevicePress(item)}
-    >
-      <View style={styles.deviceIcon}>
-        <Text style={styles.deviceIconText}>G</Text>
-      </View>
-      <View style={styles.deviceBody}>
-        <Text style={styles.deviceName}>{item.device_name}</Text>
-        <Text style={styles.deviceSerial}>{item.serial_number}</Text>
-      </View>
-      <Text style={styles.deviceType}>{item.device_type}</Text>
-    </TouchableOpacity>
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View>
+        <View style={styles.headerTitleContainer}>
           <Text style={styles.title}>Smart Glove</Text>
           <Text style={styles.subtitle}>ASL recognition and speech output</Text>
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={handleAddDevice}>
-          <Text style={styles.addButtonText}>Registry</Text>
+        <TouchableOpacity style={styles.logoutButton} onPress={() => navigation.replace('Login')}>
+          <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
       </View>
 
-      {!!errorMessage && (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorText}>{errorMessage}</Text>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <View style={styles.heroCard}>
+          <Text style={styles.heroLabel}>Live mode</Text>
+          <Text style={styles.heroTitle}>Selected ASL signs with multilingual speech output.</Text>
+          <Text style={styles.heroText}>
+            Select a live input below. Enable Bluetooth for on-device BLE labels, or connect to the Python WebSocket bridge.
+          </Text>
         </View>
-      )}
 
-      {loading ? (
-        <View style={styles.loadingState}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading devices</Text>
+        <View style={styles.actionGrid}>
+          <TouchableOpacity style={[styles.actionCard, styles.bleActionCard]} onPress={() => navigation.navigate('BleLabel')}>
+            <Text style={styles.actionTitle}>📡 BLE Label Mode</Text>
+            <Text style={styles.actionText}>Arduino sends predictions over BLE. Phone displays and speaks instantly.</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionCard, styles.wsActionCard]} onPress={() => navigation.navigate('WebSocketLabel')}>
+            <Text style={styles.actionTitle}>WebSocket Live Mode</Text>
+            <Text style={styles.actionText}>Python AI to WebSocket to phone, with default ASL and custom spoken phrase profiles.</Text>
+          </TouchableOpacity>
         </View>
-      ) : (
-        <FlatList
-          data={devices}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderItem}
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={
-            <>
-              <View style={styles.heroCard}>
-                <Text style={styles.heroLabel}>Presentation mode</Text>
-                <Text style={styles.heroTitle}>Selected ASL signs with multilingual speech output.</Text>
-                <Text style={styles.heroText}>
-                  Use ASL Phrase Profiles for the emulator demo. The legacy device registry is optional.
-                </Text>
-              </View>
-
-              <View style={styles.actionGrid}>
-                <TouchableOpacity style={[styles.actionCard, styles.bleActionCard]} onPress={() => navigation.navigate('BleLabel')}>
-                  <Text style={styles.actionTitle}>📡 BLE Label Mode</Text>
-                  <Text style={styles.actionText}>Arduino sends predictions over BLE. Phone displays and speaks instantly.</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionCard, styles.wsActionCard]} onPress={() => navigation.navigate('WebSocketLabel')}>
-                  <Text style={styles.actionTitle}>WebSocket Demo Mode</Text>
-                  <Text style={styles.actionText}>Python AI to WebSocket to phone, with default ASL and custom spoken phrase profiles.</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionCard, styles.demoActionCard]} onPress={() => navigation.navigate('SpeechDemo')}>
-                  <Text style={styles.actionTitle}>3D Speech Demo</Text>
-                  <Text style={styles.actionText}>Visualize gestures and speak the translated words.</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionCard, styles.liveActionCard]}
-                  onPress={() => navigation.navigate('SerialGloveDemo', { deviceId: devices[0]?.id })}
-                >
-                  <Text style={styles.actionTitle}>Live USB Glove</Text>
-                  <Text style={styles.actionText}>Read Arduino Serial, speak detected words, and collect samples.</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('History')}>
-                  <Text style={styles.actionTitle}>History</Text>
-                  <Text style={styles.actionText}>Review predictions and confidence.</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('Recordings')}>
-                  <Text style={styles.actionTitle}>Data</Text>
-                  <Text style={styles.actionText}>View recordings and export training rows.</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionCard} onPress={() => navigation.navigate('ModelStatus')}>
-                  <Text style={styles.actionTitle}>Model</Text>
-                  <Text style={styles.actionText}>Check labels, evaluation, and pending gestures.</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Optional devices</Text>
-                <Text style={styles.sectionMeta}>Backend registry</Text>
-              </View>
-            </>
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={() => {
-                setRefreshing(true);
-                fetchDevices(false);
-              }}
-              tintColor={colors.primary}
-            />
-          }
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyTitle}>Device registry not required</Text>
-              <Text style={styles.emptyText}>For the final demo, use WebSocket Demo Mode with ws://10.0.2.2:8765.</Text>
-            </View>
-          }
-        />
-      )}
-
-      <Modal
-        visible={!!selectedDevice}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setSelectedDevice(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modePanel}>
-            <Text style={styles.modeTitle}>{selectedDevice?.device_name}</Text>
-            <Text style={styles.modeSerial}>{selectedDevice?.serial_number}</Text>
-            <TouchableOpacity style={styles.primaryModeButton} onPress={() => openCapture('MockCapture')}>
-              <Text style={styles.modeButtonTitle}>Model Smoke Test</Text>
-              <Text style={styles.modeButtonMeta}>Run prediction and phrase output with trained sample data</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryModeButton} onPress={() => openCapture('SerialGloveDemo')}>
-              <Text style={styles.modeButtonTitle}>Live USB Glove Demo</Text>
-              <Text style={styles.modeButtonMeta}>Use Arduino Serial for visualization, speech, and sample collection</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeButton, isWeb && styles.disabledModeButton]}
-              onPress={() => openCapture('HardwareCapture')}
-            >
-              <Text style={styles.modeButtonTitle}>Live BLE Capture</Text>
-              <Text style={styles.modeButtonMeta}>{isWeb ? 'Native mobile build only' : 'Use the connected glove'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setSelectedDevice(null)}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -239,30 +64,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: spacing.xs,
   },
-  addButton: {
-    backgroundColor: colors.primary,
+  headerTitleContainer: {
+    flex: 1,
+  },
+  logoutButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: colors.danger,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.sm,
   },
-  addButtonText: {
-    color: 'white',
+  logoutButtonText: {
+    color: colors.danger,
     fontWeight: '800',
   },
-  errorBox: {
-    margin: spacing.md,
-    marginBottom: 0,
-    backgroundColor: '#FEE4E2',
-    borderWidth: 1,
-    borderColor: '#FDA29B',
-    borderRadius: radius.sm,
-    padding: spacing.sm,
-  },
-  errorText: {
-    color: colors.danger,
-    fontWeight: '700',
-  },
-  listContent: {
+  scroll: {
     padding: spacing.md,
     paddingBottom: spacing.xl,
     width: '100%',
@@ -295,14 +112,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   actionGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: 'column',
     gap: spacing.md,
     marginBottom: spacing.lg,
   },
   actionCard: {
-    flexGrow: 1,
-    flexBasis: 220,
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -310,23 +124,13 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     ...shadow,
   },
-  demoActionCard: {
-    borderColor: colors.primary,
-    backgroundColor: '#EAF4F7',
-  },
   bleActionCard: {
     borderColor: colors.accent,
-    backgroundColor: '#F5F3FF',
-    flexBasis: '100%',
+    backgroundColor: 'rgba(244, 63, 94, 0.08)',
   },
   wsActionCard: {
     borderColor: colors.success,
-    backgroundColor: '#ECFDF3',
-    flexBasis: '100%',
-  },
-  liveActionCard: {
-    borderColor: colors.success,
-    backgroundColor: '#ECFDF3',
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
   },
   actionTitle: {
     color: colors.text,
@@ -338,148 +142,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     marginTop: spacing.xs,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    marginBottom: spacing.sm,
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  sectionMeta: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  deviceItem: {
-    backgroundColor: colors.surface,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    ...shadow,
-  },
-  deviceIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-  },
-  deviceIconText: {
-    color: colors.primary,
-    fontWeight: '900',
-    fontSize: 18,
-  },
-  deviceBody: {
-    flex: 1,
-  },
-  deviceName: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: colors.text,
-  },
-  deviceSerial: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginTop: 4,
-  },
-  deviceType: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  loadingState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingText: {
-    color: colors.textMuted,
-    marginTop: spacing.sm,
-    fontWeight: '700',
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingTop: spacing.xl,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-    fontSize: 14,
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
-    justifyContent: 'flex-end',
-  },
-  modePanel: {
-    backgroundColor: colors.surface,
-    padding: spacing.lg,
-    borderTopLeftRadius: radius.md,
-    borderTopRightRadius: radius.md,
-  },
-  modeTitle: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  modeSerial: {
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-    marginBottom: spacing.md,
-  },
-  modeButton: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.surface,
-  },
-  primaryModeButton: {
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
-    backgroundColor: colors.surfaceMuted,
-  },
-  disabledModeButton: {
-    opacity: 0.65,
-  },
-  modeButtonTitle: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  modeButtonMeta: {
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
-  cancelButton: {
-    padding: spacing.md,
-    alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: colors.danger,
-    fontWeight: '800',
   },
 });
 

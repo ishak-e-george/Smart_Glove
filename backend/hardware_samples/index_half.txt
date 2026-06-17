@@ -1,2 +1,0 @@
-# Paste clean INDEX_HALF rows here.
-# Rule: indexPercent 25-59 and middlePercent 0-20.

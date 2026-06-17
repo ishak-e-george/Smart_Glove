@@ -1,2 +1,0 @@
-# Paste clean BOTH_BENT rows here.
-# Rule: indexPercent 60-100 and middlePercent 60-100.

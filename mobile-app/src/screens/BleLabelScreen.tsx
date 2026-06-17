@@ -10,8 +10,7 @@
  *   Field 2: confidence    (0.89)
  *   Field 3: finger values (78,0,7,100,20)
  *
- * This screen is kept intentionally separate from HardwareCaptureScreen so
- * the raw-sensor/training flow is never broken.
+ * This screen consumes final gesture labels from the Arduino BLE service.
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -37,6 +36,11 @@ import {
 } from '../services/bleLabelService';
 import type { Device } from 'react-native-ble-plx';
 import { colors, radius, shadow, spacing } from '../styles/theme';
+import { profileService } from '../services/profileService';
+import { aslSettingsService } from '../services/aslSettingsService';
+import { aslSpeechService } from '../services/aslSpeechService';
+import { aslHistoryService } from '../services/aslHistoryService';
+import { GestureLabel } from '../types/gesture';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -139,13 +143,62 @@ const BleLabelScreen = ({ navigation }: any) => {
     );
   };
 
+  const speakLabel = useCallback(async (phrase: string) => {
+    try {
+      const settings = await aslSettingsService.getSettings();
+      setIsSpeaking(true);
+      await aslSpeechService.speak(phrase, settings.speechLanguageCode, settings.speechVoiceId);
+    } catch (err) {
+      console.warn('speakLabel failed:', err);
+    } finally {
+      setTimeout(() => setIsSpeaking(false), 1200);
+    }
+  }, []);
+
   const beginListening = () => {
     startLabelStream(
-      (label) => {
-        setCurrentLabel(label);
-        setHistory((prev) => [label, ...prev].slice(0, 20));
-        triggerWordPop();
-        speakLabel(label.phrase);
+      async (label) => {
+        try {
+          const active = await profileService.getActiveProfile();
+          const settings = await aslSettingsService.getSettings();
+          const translation = await profileService.getPhraseTranslation(
+            active.id,
+            label.label as GestureLabel,
+            settings.speechLanguageCode
+          );
+
+          const phraseToUse = translation.phrase || label.phrase;
+
+          // Check if this label has speakEnabled
+          const phraseSettings = await profileService.getPhraseForLabel(label.label as GestureLabel);
+
+          const updatedLabel: GloveLabel = {
+            ...label,
+            phrase: phraseToUse,
+          };
+
+          setCurrentLabel(updatedLabel);
+          setHistory((prev) => [updatedLabel, ...prev].slice(0, 20));
+          triggerWordPop();
+
+          if (phraseSettings.speakEnabled) {
+            await speakLabel(phraseToUse);
+          }
+
+          // Save to global detection history
+          await aslHistoryService.add({
+            label: label.label,
+            phrase: phraseToUse,
+            languageCode: settings.speechLanguageCode,
+            confidence: label.confidence,
+          });
+        } catch (err) {
+          console.warn('Error resolving BLE label translation:', err);
+          setCurrentLabel(label);
+          setHistory((prev) => [label, ...prev].slice(0, 20));
+          triggerWordPop();
+          await speakLabel(label.phrase);
+        }
       },
       (msg) => {
         setErrorMsg(msg);
@@ -160,25 +213,13 @@ const BleLabelScreen = ({ navigation }: any) => {
     setCurrentLabel(null);
     setPhase('idle');
     setErrorMsg('');
-    Speech.stop();
-  };
-
-  // ── Speech ────────────────────────────────────────────────────────────────
-
-  const speakLabel = (phrase: string) => {
-    Speech.stop();
-    setIsSpeaking(true);
-    Speech.speak(phrase, {
-      language: 'en-US',
-      pitch: 1.0,
-      rate: 0.9,
-      onDone: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
+    aslSpeechService.stop();
   };
 
   const handleRepeat = () => {
-    if (currentLabel) speakLabel(currentLabel.phrase);
+    if (currentLabel) {
+      speakLabel(currentLabel.phrase);
+    }
   };
 
   // ── Status label/color ────────────────────────────────────────────────────

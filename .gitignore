@@ -16,10 +16,24 @@ build/
 *.log
 *.tmp
 *.temp
+.tmp_run/
 
 # Local generated data
 *.db
 uploads/
+snapshot/
+assets/
+*.bak
+*_backup*.csv
+*_BACKUP*.csv
+*_before_*.csv
+
+# Local document artifacts
+*.docx
+*.pptx
+smart_glove_screen.png
+mobile-app/screencap.png
+mobile-app/find_colors.py
 
 # OS / editor
 .DS_Store

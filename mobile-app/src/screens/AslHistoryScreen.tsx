@@ -4,7 +4,6 @@ import {
   AppHeader,
   AppScreen,
   EmptyState,
-  GestureBadge,
   InfoCard,
   LanguageBadge,
   SecondaryButton,
@@ -88,7 +87,7 @@ const AslHistoryScreen = ({ navigation }: Props) => {
                 </View>
                 <View style={styles.eventBody}>
                   <View style={styles.badgeRow}>
-                    <GestureBadge label={event.label} />
+                    <StatusBadge label={event.label} tone="success" />
                     <LanguageBadge label={event.languageCode} />
                     <StatusBadge label={formatConfidence(event.confidence)} tone="success" />
                   </View>

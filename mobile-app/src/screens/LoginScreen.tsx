@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { colors, radius, shadow, spacing } from '../styles/theme';
+import { sessionService } from '../services/sessionService';
 
 const LoginScreen = ({ navigation }: any) => {
   const [email, setEmail] = useState('user@glove.com');
@@ -17,6 +18,7 @@ const LoginScreen = ({ navigation }: any) => {
     setErrorMessage('');
     setLoading(true);
     try {
+      sessionService.setEmail(trimmedEmail);
       navigation.replace('ModeSelection', { email: trimmedEmail });
     } catch (error: any) {
       setErrorMessage(error.response?.data?.detail || 'Unable to start a local user session.');

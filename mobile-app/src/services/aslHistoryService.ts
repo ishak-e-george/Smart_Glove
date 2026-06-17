@@ -1,5 +1,6 @@
 import { DetectionEvent } from '../types/gesture';
 import { databaseService } from './databaseService';
+import { sessionService } from './sessionService';
 
 const MAX_HISTORY = 100;
 
@@ -13,8 +14,10 @@ type DetectionRow = {
 };
 
 function mapRow(row: DetectionRow): DetectionEvent {
+  // Strip the email prefix from the ID if present for clean client use
+  const actualId = row.id.includes('_') ? row.id.split('_').slice(1).join('_') : row.id;
   return {
-    id: row.id,
+    id: actualId,
     label: row.label,
     phrase: row.phrase,
     languageCode: row.language_code,
@@ -26,8 +29,10 @@ function mapRow(row: DetectionRow): DetectionEvent {
 export const aslHistoryService = {
   async getRecent(): Promise<DetectionEvent[]> {
     const db = await databaseService.getDb();
+    const email = sessionService.getEmail();
     const rows = await db.getAllAsync<DetectionRow>(
-      'SELECT * FROM detection_history ORDER BY timestamp DESC LIMIT ?',
+      'SELECT * FROM detection_history WHERE id LIKE ? ORDER BY timestamp DESC LIMIT ?',
+      `${email}_%`,
       MAX_HISTORY,
     );
     return rows.map(mapRow);
@@ -35,7 +40,9 @@ export const aslHistoryService = {
 
   async add(event: Omit<DetectionEvent, 'id' | 'timestamp'>): Promise<DetectionEvent[]> {
     const db = await databaseService.getDb();
-    const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const email = sessionService.getEmail();
+    const baseId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const id = `${email}_${baseId}`;
     const timestamp = new Date().toISOString();
     await db.runAsync(
       'INSERT INTO detection_history (id, label, phrase, language_code, confidence, timestamp) VALUES (?, ?, ?, ?, ?, ?)',
@@ -47,7 +54,9 @@ export const aslHistoryService = {
       timestamp,
     );
     await db.runAsync(
-      'DELETE FROM detection_history WHERE id NOT IN (SELECT id FROM detection_history ORDER BY timestamp DESC LIMIT ?)',
+      'DELETE FROM detection_history WHERE id LIKE ? AND id NOT IN (SELECT id FROM detection_history WHERE id LIKE ? ORDER BY timestamp DESC LIMIT ?)',
+      `${email}_%`,
+      `${email}_%`,
       MAX_HISTORY,
     );
     return this.getRecent();
@@ -55,6 +64,8 @@ export const aslHistoryService = {
 
   async clear(): Promise<void> {
     const db = await databaseService.getDb();
-    await db.runAsync('DELETE FROM detection_history');
+    const email = sessionService.getEmail();
+    await db.runAsync('DELETE FROM detection_history WHERE id LIKE ?', `${email}_%`);
   },
 };
+

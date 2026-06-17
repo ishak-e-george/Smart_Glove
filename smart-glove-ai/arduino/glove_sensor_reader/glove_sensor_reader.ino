@@ -46,8 +46,7 @@ const int READ_DELAY_MS           = 60;
 const int WINDOW_SIZE             = 10;
 const int CALIBRATION_SAMPLE_COUNT = 100;
 const int CALIBRATION_SETTLE_MS   = 300;
-const int MIN_USABLE_RANGE        = 20;   // Absolute floor — prevents div/zero
-                                           // Weak fingers (Pinky/Thumb) allowed in demo mode
+const int MIN_USABLE_RANGE        = 20;   // Absolute floor to prevent div/zero.
 
 // ---------------------------------------------------------------------------
 // Flash storage
@@ -110,8 +109,8 @@ const FingerConfig fingerConfigs[FINGER_COUNT] = {
 // ---------------------------------------------------------------------------
 int rawValues[FINGER_COUNT];
 int smoothValues[FINGER_COUNT];
-int flatValues[FINGER_COUNT] = {-1, -1, -1, -1, -1};
-int curlValues[FINGER_COUNT] = {-1, -1, -1, -1, -1};
+int flatValues[FINGER_COUNT] = {-1, -1, -1, -1, 2000};
+int curlValues[FINGER_COUNT] = {-1, -1, -1, -1, 2100};
 int percentValues[FINGER_COUNT];
 
 // Moving-average window per finger
@@ -263,6 +262,7 @@ int getRange(int fingerIndex) {
 }
 
 int getPercent(int fingerIndex, int smooth) {
+  if (fingerIndex == 4) return 0; // Ignore THUMB and force to 0%
   if (flatValues[fingerIndex] == -1 || curlValues[fingerIndex] == -1) return -1;
 
   int range = getRange(fingerIndex);
@@ -286,15 +286,14 @@ String getState(int fingerIndex, int percent) {
   return "BENT";
 }
 
-// Per-finger quality — Pinky and Thumb are allowed weaker ranges in demo mode
+// Per-finger quality. Pinky and Thumb can have smaller physical bend ranges.
 String getQuality(int fingerIndex, int range) {
-  if (range == -1) return "N/A";
-  // Thumb (4) and Pinky (3) have small physical ranges — demo thresholds apply
+  if (range == -1) return "N/A";  // Thumb (4) and Pinky (3) use lower practical thresholds.
   bool weakFinger = (fingerIndex == 3 || fingerIndex == 4);
   if (weakFinger) {
     if (range < 10)  return "BAD";
-    if (range < 30)  return "WEAK_DEMO";
-    if (range < 100) return "OK_DEMO";
+    if (range < 30)  return "WEAK";
+    if (range < 100) return "OK";
     return "GOOD";
   }
   // Strong fingers (Index, Middle, Ring)
@@ -308,24 +307,30 @@ String getQuality(int fingerIndex, int range) {
 // Calibration actions
 // ---------------------------------------------------------------------------
 void saveFlatForFinger(int fingerIndex) {
-  int value = measureMedianSample(fingerConfigs[fingerIndex].pin);
-  flatValues[fingerIndex] = value;
+  if (fingerIndex == 4) {
+    flatValues[4] = 2000;
+  } else {
+    flatValues[fingerIndex] = measureMedianSample(fingerConfigs[fingerIndex].pin);
+  }
   saveCalibration();
   Serial.print("# Saved FLAT for ");
   Serial.print(fingerConfigs[fingerIndex].name);
   Serial.print(" = ");
-  Serial.println(value);
+  Serial.println(flatValues[fingerIndex]);
   printCalibrationLine(fingerIndex);
 }
 
 void saveCurlForFinger(int fingerIndex) {
-  int value = measureMedianSample(fingerConfigs[fingerIndex].pin);
-  curlValues[fingerIndex] = value;
+  if (fingerIndex == 4) {
+    curlValues[4] = 2100;
+  } else {
+    curlValues[fingerIndex] = measureMedianSample(fingerConfigs[fingerIndex].pin);
+  }
   saveCalibration();
   Serial.print("# Saved CURL for ");
   Serial.print(fingerConfigs[fingerIndex].name);
   Serial.print(" = ");
-  Serial.println(value);
+  Serial.println(curlValues[fingerIndex]);
   printCalibrationLine(fingerIndex);
 }
 
@@ -341,7 +346,11 @@ void resetFinger(int fingerIndex) {
 void saveFlatForAll() {
   Serial.println("# Sampling FLAT for all 5 fingers...");
   for (int i = 0; i < FINGER_COUNT; i++) {
-    flatValues[i] = measureMedianSample(fingerConfigs[i].pin);
+    if (i == 4) {
+      flatValues[i] = 2000;
+    } else {
+      flatValues[i] = measureMedianSample(fingerConfigs[i].pin);
+    }
   }
   saveCalibration();
   Serial.println("# Saved FLAT for all fingers.");
@@ -351,7 +360,11 @@ void saveFlatForAll() {
 void saveCurlForAll() {
   Serial.println("# Sampling CURL for all 5 fingers...");
   for (int i = 0; i < FINGER_COUNT; i++) {
-    curlValues[i] = measureMedianSample(fingerConfigs[i].pin);
+    if (i == 4) {
+      curlValues[i] = 2100;
+    } else {
+      curlValues[i] = measureMedianSample(fingerConfigs[i].pin);
+    }
   }
   saveCalibration();
   Serial.println("# Saved CURL for all 5 fingers.");
@@ -360,8 +373,13 @@ void saveCurlForAll() {
 
 void resetAll() {
   for (int i = 0; i < FINGER_COUNT; i++) {
-    flatValues[i] = -1;
-    curlValues[i] = -1;
+    if (i == 4) {
+      flatValues[i] = 2000;
+      curlValues[i] = 2100;
+    } else {
+      flatValues[i] = -1;
+      curlValues[i] = -1;
+    }
   }
   deleteCalibration();
   Serial.println("# Reset all calibration.");
@@ -449,6 +467,13 @@ bool loadCalibration() {
   // 0..4095 means a valid ADC reading.
   // One bad finger must NOT erase the other four fingers.
   for (int i = 0; i < FINGER_COUNT; i++) {
+    if (i == 4) {
+      flatValues[i] = 2000;
+      curlValues[i] = 2100;
+      restoredAny = true;
+      continue;
+    }
+
     int flat = stored.flatValues[i];
     int curl = stored.curlValues[i];
 

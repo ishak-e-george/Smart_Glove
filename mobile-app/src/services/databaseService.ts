@@ -2,6 +2,7 @@ import { openDatabaseAsync, SQLiteDatabase } from 'expo-sqlite/next';
 import { createDefaultPhrases, createDefaultProfiles, createDefaultTranslations, DEFAULT_SPEECH_LANGUAGE, DEFAULT_WS_URL } from '../constants/defaultProfiles';
 
 let dbPromise: Promise<SQLiteDatabase> | null = null;
+let initPromise: Promise<SQLiteDatabase> | null = null;
 
 async function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
@@ -10,7 +11,7 @@ async function getDb(): Promise<SQLiteDatabase> {
   return dbPromise;
 }
 
-export async function initDatabase(): Promise<SQLiteDatabase> {
+async function initializeDatabase(): Promise<SQLiteDatabase> {
   const db = await getDb();
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS profiles (
@@ -62,79 +63,30 @@ export async function initDatabase(): Promise<SQLiteDatabase> {
     // Column already exists.
   }
 
-  const existing = await db.getAllAsync<{ count: number }>('SELECT COUNT(*) AS count FROM profiles');
-  if ((existing[0]?.count ?? 0) === 0) {
-    const profiles = createDefaultProfiles();
-    const phrases = createDefaultPhrases();
-    const translations = createDefaultTranslations();
-
-    await db.withTransactionAsync(async () => {
-      for (const profile of profiles) {
-        await db.runAsync(
-          'INSERT INTO profiles (id, name, mode, is_active, is_locked, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-          profile.id,
-          profile.name,
-          profile.mode,
-          profile.isActive ? 1 : 0,
-          profile.isLocked ? 1 : 0,
-          profile.createdAt,
-        );
-      }
-
-      for (const phrase of phrases) {
-        await db.runAsync(
-          'INSERT INTO phrases (id, profile_id, label, phrase, speak_enabled, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-          phrase.id,
-          phrase.profileId,
-          phrase.label,
-          phrase.phrase,
-          phrase.speakEnabled ? 1 : 0,
-          phrase.updatedAt,
-        );
-      }
-
-      for (const translation of translations) {
-        await db.runAsync(
-          'INSERT OR REPLACE INTO phrase_translations (id, profile_id, label, language_code, phrase, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-          translation.id,
-          translation.profileId,
-          translation.label,
-          translation.languageCode,
-          translation.phrase,
-          translation.updatedAt,
-        );
-      }
-
-      await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'websocket_url', DEFAULT_WS_URL);
-      await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'auto_connect', 'false');
-      await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'show_raw_messages', 'true');
-      await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'speech_language_code', DEFAULT_SPEECH_LANGUAGE);
-      await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', 'speech_voice_id', '');
-    });
-  }
-
-  const translationCount = await db.getAllAsync<{ count: number }>('SELECT COUNT(*) AS count FROM phrase_translations');
-  if ((translationCount[0]?.count ?? 0) === 0) {
-    const translations = createDefaultTranslations();
-    await db.withTransactionAsync(async () => {
-      for (const translation of translations) {
-        await db.runAsync(
-          'INSERT OR REPLACE INTO phrase_translations (id, profile_id, label, language_code, phrase, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-          translation.id,
-          translation.profileId,
-          translation.label,
-          translation.languageCode,
-          translation.phrase,
-          translation.updatedAt,
-        );
-      }
-    });
+  // Purge legacy ASL word profiles and phrases (no @ in ID) from database
+  try {
+    await db.runAsync("DELETE FROM profiles WHERE instr(id, '@') = 0;");
+    await db.runAsync("DELETE FROM phrases WHERE instr(profile_id, '@') = 0;");
+    await db.runAsync("DELETE FROM phrase_translations WHERE instr(profile_id, '@') = 0;");
+  } catch (err) {
+    // Tables might not exist or be loaded.
   }
 
   await db.runAsync('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', 'speech_language_code', DEFAULT_SPEECH_LANGUAGE);
   await db.runAsync('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', 'speech_voice_id', '');
 
+
   return db;
+}
+
+export async function initDatabase(): Promise<SQLiteDatabase> {
+  if (!initPromise) {
+    initPromise = initializeDatabase().catch((error) => {
+      initPromise = null;
+      throw error;
+    });
+  }
+  return initPromise;
 }
 
 export const databaseService = {

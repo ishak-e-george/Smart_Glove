@@ -85,7 +85,13 @@ const AslProfilesScreen = ({ navigation }: Props) => {
       {profiles.map((profile) => {
         const profilePhrases = phrases.filter((phrase) => phrase.profileId === profile.id);
         const profileTranslations = translations.filter((phrase) => phrase.profileId === profile.id);
-        const modeText = profile.mode === 'CUSTOM' ? 'Custom Phrase Mode' : 'Default ASL Mode';
+        const modeText = profile.mode === 'CUSTOM'
+          ? 'Custom Phrase Mode'
+          : profile.mode === 'BOTH_HANDS'
+            ? 'Both Hands Mode'
+            : profile.mode === 'ALPHABET'
+              ? 'ASL Alphabet Mode'
+              : 'Default ASL Mode';
 
         return (
           <InfoCard key={profile.id} tone={profile.isActive ? 'success' : 'default'} style={styles.profileCard}>

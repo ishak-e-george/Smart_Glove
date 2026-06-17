@@ -113,7 +113,7 @@ const AslSettingsScreen = ({ navigation }: Props) => {
         <View style={styles.switchRow}>
           <View style={styles.switchCopy}>
             <Text style={styles.switchTitle}>Show raw bridge messages</Text>
-            <Text style={styles.switchMeta}>Useful while debugging the FYP demo.</Text>
+            <Text style={styles.switchMeta}>Useful while debugging the live bridge.</Text>
           </View>
           <Switch value={showRaw} onValueChange={setShowRaw} />
         </View>

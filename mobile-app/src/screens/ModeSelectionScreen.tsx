@@ -11,6 +11,8 @@ import {
   StatusBadge,
 } from '../components/aslUi';
 import {
+  ALPHABET_PROFILE_ID,
+  BOTH_HANDS_PROFILE_ID,
   CUSTOM_PROFILE_ID,
   DEFAULT_ASL_PROFILE_ID,
   DEFAULT_WS_URL,
@@ -29,40 +31,60 @@ type Props = {
   };
 };
 
-type ModeChoice = 'asl' | 'custom';
+type ModeChoice = 'asl' | 'custom' | 'alphabet' | 'bothHands';
 
 const ModeSelectionScreen = ({ navigation, route }: Props) => {
   const [selectedLanguage, setSelectedLanguage] = useState('en-US');
   const [loadingMode, setLoadingMode] = useState<ModeChoice | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
   const email = route?.params?.email ?? 'Local user';
 
   const selectedLanguageInfo = SUPPORTED_SPEECH_LANGUAGES.find((language) => language.code === selectedLanguage);
 
   const startMode = async (mode: ModeChoice) => {
-    setLoadingMode(mode);
-    const settings = await aslSettingsService.getSettings();
-    await profileService.activateProfile(mode === 'asl' ? DEFAULT_ASL_PROFILE_ID : CUSTOM_PROFILE_ID);
-    await aslSettingsService.saveSettings({
-      ...settings,
-      websocketUrl: settings.websocketUrl || DEFAULT_WS_URL,
-      speechLanguageCode: selectedLanguage,
-      speechVoiceId: '',
-    });
-    setLoadingMode(null);
-    navigation.replace('WebSocketLabel');
+    try {
+      setErrorMessage('');
+      setLoadingMode(mode);
+      const settings = await aslSettingsService.getSettings();
+      const profileId = mode === 'asl'
+        ? DEFAULT_ASL_PROFILE_ID
+        : mode === 'alphabet'
+          ? ALPHABET_PROFILE_ID
+          : mode === 'bothHands'
+            ? BOTH_HANDS_PROFILE_ID
+            : CUSTOM_PROFILE_ID;
+      await profileService.activateProfile(profileId);
+      await aslSettingsService.saveSettings({
+        ...settings,
+        websocketUrl: settings.websocketUrl || DEFAULT_WS_URL,
+        speechLanguageCode: selectedLanguage,
+        speechVoiceId: '',
+      });
+      navigation.replace('WebSocketLabel');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to start the selected mode.');
+    } finally {
+      setLoadingMode(null);
+    }
   };
 
   const editCustomPhrases = async () => {
-    setLoadingMode('custom');
-    const settings = await aslSettingsService.getSettings();
-    await profileService.activateProfile(CUSTOM_PROFILE_ID);
-    await aslSettingsService.saveSettings({
-      ...settings,
-      speechLanguageCode: selectedLanguage,
-      speechVoiceId: '',
-    });
-    setLoadingMode(null);
-    navigation.navigate('PhraseEditor');
+    try {
+      setErrorMessage('');
+      setLoadingMode('custom');
+      const settings = await aslSettingsService.getSettings();
+      await profileService.activateProfile(CUSTOM_PROFILE_ID);
+      await aslSettingsService.saveSettings({
+        ...settings,
+        speechLanguageCode: selectedLanguage,
+        speechVoiceId: '',
+      });
+      navigation.navigate('PhraseEditor', { profileId: CUSTOM_PROFILE_ID, label: 'A' });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to open phrase editor.');
+    } finally {
+      setLoadingMode(null);
+    }
   };
 
   return (
@@ -109,25 +131,6 @@ const ModeSelectionScreen = ({ navigation, route }: Props) => {
         </View>
       </InfoCard>
 
-      <InfoCard tone="primary">
-        <View style={styles.modeHeader}>
-          <View style={styles.modeIcon}>
-            <Text style={styles.modeIconText}>ASL</Text>
-          </View>
-          <View style={styles.modeCopy}>
-            <Text style={styles.modeTitle}>Default ASL Mode</Text>
-            <Text style={styles.modeText}>
-              Uses the built-in presentation profile for the trained signs: YES, WHERE, FEEL, and NAME.
-            </Text>
-          </View>
-        </View>
-        <PrimaryButton
-          label={loadingMode === 'asl' ? 'Starting...' : 'Use ASL Mode'}
-          onPress={() => startMode('asl')}
-          disabled={loadingMode !== null}
-        />
-      </InfoCard>
-
       <InfoCard tone="success">
         <View style={styles.modeHeader}>
           <View style={[styles.modeIcon, styles.customIcon]}>
@@ -156,11 +159,55 @@ const ModeSelectionScreen = ({ navigation, route }: Props) => {
         </View>
       </InfoCard>
 
+      <InfoCard tone="warning">
+        <View style={styles.modeHeader}>
+          <View style={[styles.modeIcon, styles.alphabetIcon]}>
+            <Text style={styles.modeIconText}>AZ</Text>
+          </View>
+          <View style={styles.modeCopy}>
+            <Text style={styles.modeTitle}>ASL Alphabet Mode</Text>
+            <Text style={styles.modeText}>
+              Prepares the app for an A-Z fingerspelling model. Use this after training the alphabet model.
+            </Text>
+          </View>
+        </View>
+        <PrimaryButton
+          label={loadingMode === 'alphabet' ? 'Starting...' : 'Use Alphabet Mode'}
+          onPress={() => startMode('alphabet')}
+          disabled={loadingMode !== null}
+        />
+      </InfoCard>
+
+      <InfoCard tone="info">
+        <View style={styles.modeHeader}>
+          <View style={[styles.modeIcon, styles.bothHandsIcon]}>
+            <Text style={styles.modeIconText}>LR</Text>
+          </View>
+          <View style={styles.modeCopy}>
+            <Text style={styles.modeTitle}>Both Hands Alphabet Mode</Text>
+            <Text style={styles.modeText}>
+              Shows paired left and right hand ASL letters from the two-glove WebSocket bridge.
+            </Text>
+          </View>
+        </View>
+        <PrimaryButton
+          label={loadingMode === 'bothHands' ? 'Starting...' : 'Use Both Hands Mode'}
+          onPress={() => startMode('bothHands')}
+          disabled={loadingMode !== null}
+        />
+      </InfoCard>
+
       {loadingMode !== null && (
         <View style={styles.loadingRow}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.loadingText}>Saving profile and language...</Text>
         </View>
+      )}
+
+      {!!errorMessage && (
+        <InfoCard tone="danger">
+          <Text style={styles.errorText}>{errorMessage}</Text>
+        </InfoCard>
       )}
     </AppScreen>
   );
@@ -241,6 +288,12 @@ const styles = StyleSheet.create({
   customIcon: {
     backgroundColor: colors.success,
   },
+  alphabetIcon: {
+    backgroundColor: colors.warning,
+  },
+  bothHandsIcon: {
+    backgroundColor: colors.primary,
+  },
   modeIconText: {
     color: colors.white,
     fontWeight: '900',
@@ -277,6 +330,11 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.textMuted,
     fontWeight: '800',
+  },
+  errorText: {
+    color: colors.danger,
+    fontWeight: '900',
+    lineHeight: 21,
   },
 });
 

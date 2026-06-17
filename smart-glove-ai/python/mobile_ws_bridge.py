@@ -9,23 +9,19 @@ FORMAT SENT TO MOBILE APP:
     LABEL|Phrase|confidence|index,middle,ring,pinky,thumb
     e.g.  HELLO|Hello|0.93|100,0,0,0,0
 
-This bridge has TWO modes:
-
-  --mode demo   (default)
-      Sends fake labels every 2 seconds so you can test the mobile app
-      without needing the Arduino connected. Safe to run anytime.
+This bridge has two live modes:
 
   --mode live
       Reads real sensor data from the Arduino serial port, runs the
-      5-finger RandomForest model, and sends real predictions to the app.
-      Requires Arduino connected and glove_5word_model.joblib trained.
+      trained RandomForest model, and sends real predictions to the app.
+
+  --mode live-dual
+      Reads two Arduino serial ports, runs one model per glove, and sends
+      paired left/right predictions to the app.
 
 USAGE:
-  # Demo mode (no Arduino needed):
-  python python/mobile_ws_bridge.py
-
-  # Live mode (Arduino on COM4):
   python python/mobile_ws_bridge.py --mode live --port COM4
+  python python/mobile_ws_bridge.py --mode live-dual --left-port COM4 --right-port COM5
 
 MOBILE APP CONNECTION:
   Android emulator → ws://10.0.2.2:8765
@@ -33,8 +29,7 @@ MOBILE APP CONNECTION:
   The port matches --ws-port (default 8765).
 
 DEPENDENCIES:
-  pip install websockets fastapi uvicorn
-  (live mode also needs: pyserial joblib scikit-learn pandas)
+  pip install websockets pyserial joblib scikit-learn pandas
 """
 
 from __future__ import annotations
@@ -58,15 +53,7 @@ except ImportError:
 connected_clients: set = set()
 
 
-# ── Demo gesture table ────────────────────────────────────────────────────────
-# These are sent in demo mode.  finger order: index,middle,ring,pinky,thumb
-DEMO_GESTURES = [
-    ("YES", "Yes", 0.97, [95, 85, 100, 100, 100]),
-    ("WHERE", "Where?", 0.96, [55, 72, 100, 100, 100]),
-    ("FEEL", "I feel", 0.95, [25, 65, 70, 100, 100]),
-    ("NAME", "My name is...", 0.98, [20, 0, 100, 100, 100]),
-    ("REST", "", 1.00, [0, 0, 0, 100, 100]),
-]
+ASL_ALPHABET_LABELS = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 
 def build_pipe_packet(label: str, phrase: str, confidence: float, fingers: list[int]) -> str:
@@ -86,6 +73,32 @@ def build_gesture_message(label: str, confidence: float, fingers: list[int], sta
     })
 
 
+def build_dual_gesture_message(
+    left_label: str,
+    right_label: str,
+    left_confidence: float,
+    right_confidence: float,
+    left_fingers: list[int],
+    right_fingers: list[int],
+    state: str,
+) -> str:
+    combined = " ".join(label for label in [left_label, right_label] if label)
+    confidence = (left_confidence + right_confidence) / 2.0
+    return json.dumps({
+        "type": "gesture_detected",
+        "label": combined,
+        "leftLabel": left_label,
+        "rightLabel": right_label,
+        "confidence": round(confidence, 3),
+        "leftConfidence": round(left_confidence, 3),
+        "rightConfidence": round(right_confidence, 3),
+        "state": state,
+        "leftFingers": left_fingers,
+        "rightFingers": right_fingers,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+
+
 def build_state_message(state: str, label: str = "REST", fingers: list[int] | None = None) -> str:
     return json.dumps({
         "type": "system_state",
@@ -97,55 +110,85 @@ def build_state_message(state: str, label: str = "REST", fingers: list[int] | No
     })
 
 
+def build_dual_state_message(
+    state: str,
+    left_fingers: list[int] | None = None,
+    right_fingers: list[int] | None = None,
+) -> str:
+    return json.dumps({
+        "type": "system_state",
+        "state": state,
+        "label": "REST",
+        "confidence": 1.0,
+        "leftFingers": left_fingers or [],
+        "rightFingers": right_fingers or [],
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+
+
 def values_by_feature(vals: list[int]) -> dict[str, int]:
     names = ["index", "middle", "ring", "pinky", "thumb"]
     return dict(zip(names, vals))
 
 
 def is_rest(vals: list[int]) -> bool:
-    data = values_by_feature(vals)
-    index = data["index"]
-    middle = data["middle"]
-    ring = data["ring"]
-
-    # The ring sensor can rest slightly bent even with no hand in the glove.
-    # Treat ring-only drift as REST, while keeping NAME protected at ring >= 85.
-    if index <= 35 and middle <= 35 and ring <= 60:
-        return True
-
-    # After FEEL, the middle sensor can stay high while index/ring are relaxed.
-    # Treat that as REST drift; real FEEL still needs ring >= 55.
-    if index <= 35 and ring <= 35 and middle <= 85:
-        return True
-
-    # Low/medium decay after a gesture should reset the demo instead of
-    # keeping the state machine locked in "waiting for REST".
-    if index <= 35 and middle < 55 and ring <= 60:
-        return True
-
+    # Bypassed constraints: rely solely on ML model prediction
     return False
 
 
 def passes_class_gate(label: str, vals: list[int]) -> bool:
-    data = values_by_feature(vals)
-    index = data["index"]
-    middle = data["middle"]
-    ring = data["ring"]
+    # Bypassed constraints: trust ML model predictions directly
+    return True
 
-    if label == "REST":
-        return is_rest(vals)
-    if label == "FEEL":
-        return index <= 35 and middle >= 55 and 55 <= ring <= 95
-    if label == "NAME":
-        return index <= 60 and middle <= 35 and ring >= 85
-    if label == "WHERE":
-        return middle >= 85 and ring >= 95
-    if label == "YES":
-        return index >= 80 and middle >= 75 and ring >= 85
-    return False
+
+def passes_live_gate(label: str, vals: list[int], alphabet_mode: bool) -> bool:
+    # Bypassed constraints: trust ML model predictions directly
+    return True
+
 
 
 # ── WebSocket server ──────────────────────────────────────────────────────────
+
+def request_csv_mode(ser) -> None:
+    ser.write(b"m\n")
+    ser.flush()
+
+
+def read_csv_values(ser, port_name: str, debug: bool = False) -> list[int] | None:
+    raw = ser.readline().decode(errors="ignore").strip()
+    if debug and raw:
+        print(f"[RAW:{port_name}] {raw!r}")
+    if "Mode: STATUS" in raw or raw == "STATUS":
+        if debug:
+            print(f"[DBG:{port_name}] Arduino reported STATUS mode; requesting CSV mode")
+        request_csv_mode(ser)
+        return None
+    if not raw or raw.startswith("#"):
+        return None
+    parts = raw.split(",")
+    if len(parts) < 5:
+        if debug:
+            print(f"[DBG:{port_name}] skipped non-CSV line: {raw!r}")
+        return None
+    try:
+        return [max(0, min(100, int(float(p)))) for p in parts[:5]]
+    except ValueError:
+        if debug:
+            print(f"[DBG:{port_name}] skipped unparsable CSV line: {raw!r}")
+        return None
+
+
+def predict_values(model, features: list[str], vals: list[int], pd) -> tuple[str, float, list[int]]:
+    live_values = values_by_feature(vals)
+    selected_vals = [live_values[feature] for feature in features]
+    X = pd.DataFrame([selected_vals], columns=features)
+    label = str(model.predict(X)[0])
+    confidence = 1.0
+    if hasattr(model, "predict_proba"):
+        probs = model.predict_proba(X)[0]
+        confidence = float(max(probs))
+    return label, confidence, selected_vals
+
 
 async def ws_handler(websocket) -> None:
     connected_clients.add(websocket)
@@ -173,39 +216,6 @@ async def broadcast(packet: str) -> None:
         connected_clients.discard(c)
 
 
-# ── Demo mode loop ────────────────────────────────────────────────────────────
-
-async def demo_loop(interval: float) -> None:
-    """Send fake gestures on a cycle so the mobile app can be tested."""
-    print(f"\n[DEMO] Sending a fake gesture every {interval}s")
-    print("[DEMO] Connect the mobile app and watch it display + speak each word\n")
-    idx = 0
-    # Send REST first
-    rest = build_state_message("READY", "REST", [0, 0, 0, 100, 100])
-    print(f"[TX] {rest}")
-    await broadcast(rest)
-    await asyncio.sleep(interval)
-
-    while True:
-        label, phrase, conf, fingers = DEMO_GESTURES[idx % len(DEMO_GESTURES)]
-        # Skip REST in cycling (we already sent one)
-        if label == "REST":
-            idx += 1
-            continue
-        packet = build_gesture_message(label, conf, fingers, "WAITING_FOR_REST")
-        print(f"[TX] {packet}")
-        await broadcast(packet)
-        await asyncio.sleep(interval)
-        # Send REST between gestures so the app can reset
-        rest_packet = build_state_message("READY", "REST", [0, 0, 0, 100, 100])
-        print(f"[TX] {rest_packet}")
-        await broadcast(rest_packet)
-        await asyncio.sleep(1.0)
-        idx += 1
-
-
-# ── Live mode loop ────────────────────────────────────────────────────────────
-
 def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEventLoop) -> None:
     """
     Read real sensor data from Arduino, run the 5-finger word model,
@@ -228,9 +238,19 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
     artifact = joblib.load(model_path)
     model    = artifact["model"]
     features = artifact.get("features", ["index", "middle", "ring", "pinky", "thumb"])
+    model_labels = set(str(label).upper() for label in artifact.get("labels", []))
+    alphabet_mode = (
+        args.label_mode == "alphabet"
+        or (
+            args.label_mode == "auto"
+            and bool(model_labels)
+            and model_labels.issubset(ASL_ALPHABET_LABELS | {"REST"})
+        )
+    )
 
     print(f"[LIVE] Model loaded: {model_path}")
     print(f"[LIVE] Features: {features}")
+    print(f"[LIVE] Label mode: {'ALPHABET' if alphabet_mode else 'WORD'}")
     print(f"[LIVE] Opening serial {args.port} @ {args.baud}...")
 
     from collections import deque, Counter
@@ -317,45 +337,16 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
                         probs = model.predict_proba(X)[0]
                         confidence = float(max(probs))
 
-                    rest_detected = pred == "REST" or is_rest(vals)
                     debug_counter += 1
                     if args.debug and (debug_counter <= 20 or debug_counter % 25 == 0):
-                        print(f"[DBG] vals={vals} selected={selected_vals} pred={pred} conf={confidence:.2f} rest={rest_detected}")
-                    if rest_detected:
-                        rest_frames += 1
-                        history.clear()
-                        conf_history.clear()
-                        if args.debug and debug_counter % 10 == 0:
-                            print(f"[DBG] REST frames={rest_frames}/{args.rest_frames} vals={vals} pred={pred} conf={confidence:.2f}")
-                        if rest_frames >= args.rest_frames:
-                            armed = True
-                            if not ready_sent:
-                                rest_packet = build_state_message("READY", "REST", vals)
-                                print(f"[TX] {rest_packet}")
-                                asyncio.run_coroutine_threadsafe(broadcast(rest_packet), loop)
-                                ready_sent = True
-                                last_ready_time = time.time()
-                        continue
-
-                    rest_frames = 0
-
-                    if not armed:
-                        if args.debug and debug_counter % 10 == 0:
-                            print(f"[DBG] waiting_for_rest vals={vals} pred={pred} conf={confidence:.2f}")
-                        continue
-
-                    if (time.time() - last_ready_time) < args.post_rest_delay:
-                        if args.debug and debug_counter % 10 == 0:
-                            remaining = args.post_rest_delay - (time.time() - last_ready_time)
-                            print(f"[DBG] post_rest_delay {remaining:.2f}s vals={vals} pred={pred} conf={confidence:.2f}")
-                        continue
+                        print(f"[DBG] vals={vals} selected={selected_vals} pred={pred} conf={confidence:.2f}")
 
                     history.append(pred)
                     conf_history.append(confidence)
                     counts = Counter(history)
                     label, votes = counts.most_common(1)[0]
                     avg_conf = sum(conf_history) / len(conf_history)
-                    gate_ok = passes_class_gate(label, vals)
+                    gate_ok = passes_live_gate(label, vals, alphabet_mode)
 
                     if args.debug and debug_counter % 5 == 0:
                         print(
@@ -365,20 +356,21 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
 
                     now = time.time()
                     if (
-                        label != "REST"
-                        and votes >= min_votes
+                        votes >= min_votes
                         and avg_conf >= min_conf
                         and gate_ok
                         and (now - last_time) >= cooldown
                     ):
-                        packet = build_gesture_message(label, avg_conf, vals, "WAITING_FOR_REST")
+                        packet = build_gesture_message(label, avg_conf, vals, "ACTIVE")
                         print(f"[TX] {packet}")
                         asyncio.run_coroutine_threadsafe(broadcast(packet), loop)
                         last_time = now
-                        armed = False
-                        ready_sent = False
                         history.clear()
                         conf_history.clear()
+
+                    if args.loop_delay > 0:
+                        time.sleep(args.loop_delay)
+
 
         except Exception as e:
             print(f"[LIVE] Error: {e} — retrying in 3s...")
@@ -387,25 +379,170 @@ def live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEvent
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def dual_live_prediction_thread(args: argparse.Namespace, loop: asyncio.AbstractEventLoop) -> None:
+    """
+    Read two Arduino serial ports, classify each glove independently, and send
+    one combined WebSocket packet with left/right labels and finger values.
+    """
+    try:
+        import joblib
+        import pandas as pd
+        import serial
+    except ImportError:
+        print("[DUAL] Missing deps: pip install pyserial joblib scikit-learn pandas")
+        return
+
+    left_model_path = Path(args.left_model or args.model)
+    right_model_path = Path(args.right_model or args.model)
+    if not left_model_path.exists():
+        print(f"[DUAL] Left model not found: {left_model_path}")
+        return
+    if not right_model_path.exists():
+        print(f"[DUAL] Right model not found: {right_model_path}")
+        return
+
+    left_artifact = joblib.load(left_model_path)
+    right_artifact = joblib.load(right_model_path)
+    left_model = left_artifact["model"]
+    right_model = right_artifact["model"]
+    left_features = left_artifact.get("features", ["index", "middle", "ring", "pinky", "thumb"])
+    right_features = right_artifact.get("features", ["index", "middle", "ring", "pinky", "thumb"])
+
+    print(f"[DUAL] Left model loaded : {left_model_path}")
+    print(f"[DUAL] Left features     : {left_features}")
+    print(f"[DUAL] Right model loaded: {right_model_path}")
+    print(f"[DUAL] Right features    : {right_features}")
+    print(f"[DUAL] Opening left serial {args.left_port} @ {args.baud}...")
+    print(f"[DUAL] Opening right serial {args.right_port} @ {args.baud}...")
+
+    from collections import Counter, deque
+
+    left_history: deque[str] = deque(maxlen=args.window)
+    right_history: deque[str] = deque(maxlen=args.window)
+    left_conf_history: deque[float] = deque(maxlen=args.window)
+    right_conf_history: deque[float] = deque(maxlen=args.window)
+    last_time = 0.0
+    last_left: list[int] = []
+    last_right: list[int] = []
+
+    while True:
+        try:
+            with serial.Serial(args.left_port, args.baud, timeout=0.2) as left_ser, serial.Serial(
+                args.right_port, args.baud, timeout=0.2
+            ) as right_ser:
+                time.sleep(2.0)
+                left_ser.reset_input_buffer()
+                right_ser.reset_input_buffer()
+                request_csv_mode(left_ser)
+                request_csv_mode(right_ser)
+                time.sleep(0.5)
+                ready = build_dual_state_message("READY", [], [])
+                print(f"[TX] {ready}")
+                asyncio.run_coroutine_threadsafe(broadcast(ready), loop)
+                print("[DUAL] Both serial ports open. Waiting for two-glove gestures...")
+
+                while True:
+                    if left_ser.in_waiting > 1000:
+                        left_ser.reset_input_buffer()
+                    if right_ser.in_waiting > 1000:
+                        right_ser.reset_input_buffer()
+
+                    left_vals = read_csv_values(left_ser, "L", args.debug)
+                    right_vals = read_csv_values(right_ser, "R", args.debug)
+                    if left_vals is not None:
+                        last_left = left_vals
+                        left_label, left_conf, left_selected = predict_values(left_model, left_features, left_vals, pd)
+                        left_history.append(left_label)
+                        left_conf_history.append(left_conf)
+                        if args.debug:
+                            print(
+                                f"[DBG:L] vals={left_vals} selected={left_selected} "
+                                f"pred={left_label} conf={left_conf:.2f}"
+                            )
+                    if right_vals is not None:
+                        last_right = right_vals
+                        right_label, right_conf, right_selected = predict_values(right_model, right_features, right_vals, pd)
+                        right_history.append(right_label)
+                        right_conf_history.append(right_conf)
+                        if args.debug:
+                            print(
+                                f"[DBG:R] vals={right_vals} selected={right_selected} "
+                                f"pred={right_label} conf={right_conf:.2f}"
+                            )
+
+                    if len(left_history) < args.min_votes or len(right_history) < args.min_votes:
+                        continue
+
+                    left_label, left_votes = Counter(left_history).most_common(1)[0]
+                    right_label, right_votes = Counter(right_history).most_common(1)[0]
+                    left_avg_conf = sum(left_conf_history) / len(left_conf_history)
+                    right_avg_conf = sum(right_conf_history) / len(right_conf_history)
+                    now = time.time()
+                    if args.debug:
+                        print(
+                            f"[DBG:DUAL] L={left_label} {left_votes}/{args.min_votes} {left_avg_conf:.2f} "
+                            f"R={right_label} {right_votes}/{args.min_votes} {right_avg_conf:.2f}"
+                        )
+
+                    if (
+                        left_votes >= args.min_votes
+                        and right_votes >= args.min_votes
+                        and left_avg_conf >= args.confidence
+                        and right_avg_conf >= args.confidence
+                        and (now - last_time) >= args.cooldown
+                    ):
+                        packet = build_dual_gesture_message(
+                            left_label,
+                            right_label,
+                            left_avg_conf,
+                            right_avg_conf,
+                            last_left,
+                            last_right,
+                            "ACTIVE",
+                        )
+                        print(f"[TX] {packet}")
+                        asyncio.run_coroutine_threadsafe(broadcast(packet), loop)
+                        last_time = now
+                        left_history.clear()
+                        right_history.clear()
+                        left_conf_history.clear()
+                        right_conf_history.clear()
+
+                    if args.loop_delay > 0:
+                        time.sleep(args.loop_delay)
+
+        except Exception as e:
+            print(f"[DUAL] Error: {e} - retrying in 3s...")
+            time.sleep(3)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Smart Glove WebSocket bridge for mobile app",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--mode",       default="demo", choices=["demo", "live"],
-                        help="demo = fake labels every N seconds | live = real Arduino AI")
+    parser.add_argument("--mode",       default="live", choices=["live", "live-dual"],
+                        help="live = one Arduino AI | live-dual = two Arduino gloves")
     parser.add_argument("--port",       default="COM4",
                         help="Arduino serial port (live mode only), e.g. COM4")
+    parser.add_argument("--left-port",  default="COM4",
+                        help="Left glove Arduino serial port (live-dual mode), e.g. COM4")
+    parser.add_argument("--right-port", default="COM5",
+                        help="Right glove Arduino serial port (live-dual mode), e.g. COM5")
     parser.add_argument("--baud",       type=int, default=115200)
-    parser.add_argument("--model",      default=str(Path(__file__).resolve().parents[1] / "models" / "asl_3finger_model.joblib"),
+    parser.add_argument("--model",      default=str(Path(__file__).resolve().parents[1] / "models" / "asl_alphabet_5finger_model.joblib"),
                         help="Path to trained .joblib model (live mode only)")
+    parser.add_argument("--left-model", default=None,
+                        help="Path to trained left-glove .joblib model (live-dual mode). Defaults to --model")
+    parser.add_argument("--right-model", default=None,
+                        help="Path to trained right-glove .joblib model (live-dual mode). Defaults to --model")
+    parser.add_argument("--label-mode", default="auto", choices=["auto", "word", "alphabet"],
+                        help="word = strict word gates | alphabet = accept stable A-Z labels | auto = infer from model labels")
     parser.add_argument("--ws-host",    default="0.0.0.0",
                         help="WebSocket host (0.0.0.0 = accept all interfaces)")
     parser.add_argument("--ws-port",    type=int, default=8765,
                         help="WebSocket port (default 8765)")
-    parser.add_argument("--interval",   type=float, default=2.5,
-                        help="Seconds between fake gestures in demo mode")
     # Live mode tuning
     parser.add_argument("--window",     type=int,   default=7,
                         help="Size of prediction rolling window (~0.5 seconds at 60ms loop)")
@@ -416,8 +553,10 @@ def parse_args() -> argparse.Namespace:
                         help="Max finger percentage to qualify as REST/open hand")
     parser.add_argument("--rest-frames", type=int, default=6,
                         help="Consecutive REST frames required before accepting a new gesture")
-    parser.add_argument("--cooldown",   type=float, default=1.0,
+    parser.add_argument("--cooldown",   type=float, default=4.0,
                         help="Speech cooldown in seconds")
+    parser.add_argument("--loop-delay", type=float, default=0.02,
+                        help="Small delay in seconds inside the serial reading loop to throttle execution")
     parser.add_argument("--post-rest-delay", type=float, default=0.7,
                         help="Seconds to ignore transition frames after stable REST is detected")
     parser.add_argument("--debug", action="store_true",
@@ -446,9 +585,15 @@ async def run(args: argparse.Namespace) -> None:
         t.start()
         async with serve(ws_handler, args.ws_host, args.ws_port):
             await asyncio.Future()   # run forever
-    else:
+    elif args.mode == "live-dual":
+        t = threading.Thread(
+            target=dual_live_prediction_thread,
+            args=(args, loop),
+            daemon=True,
+        )
+        t.start()
         async with serve(ws_handler, args.ws_host, args.ws_port):
-            await demo_loop(args.interval)
+            await asyncio.Future()   # run forever
 
 
 def main() -> int:

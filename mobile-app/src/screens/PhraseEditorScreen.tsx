@@ -16,12 +16,14 @@ import {
   DEFAULT_TRANSLATIONS,
   GESTURE_LABELS,
   SUPPORTED_SPEECH_LANGUAGES,
+  WORD_GESTURE_LABELS,
+  ALPHABET_TRANSLATIONS,
 } from '../constants/defaultProfiles';
 import { aslSettingsService } from '../services/aslSettingsService';
 import { aslSpeechService } from '../services/aslSpeechService';
 import { profileService } from '../services/profileService';
 import { colors, radius, spacing, typography } from '../styles/theme';
-import { GestureLabel, GesturePhrase, GestureProfile } from '../types/gesture';
+import { GestureLabel, GesturePhrase, GestureProfile, WordGestureLabel, AlphabetGestureLabel } from '../types/gesture';
 
 type NavigationLike = {
   goBack: () => void;
@@ -39,14 +41,18 @@ type Props = {
   route: RouteLike;
 };
 
-const editableLabels = GESTURE_LABELS.filter((label) => label !== 'REST');
+const editableLabels = GESTURE_LABELS.filter((label) => label !== 'REST') as GestureLabel[];
+
+function toEditableLabel(label: GestureLabel): GestureLabel {
+  return editableLabels.includes(label) ? label : (editableLabels[0] || 'A');
+}
 
 const PhraseEditorScreen = ({ navigation, route }: Props) => {
   const profileId = route.params?.profileId ?? '';
-  const initialLabel = route.params?.label ?? 'FEEL';
+  const initialLabel = route.params?.label ?? 'A';
   const [profile, setProfile] = useState<GestureProfile | null>(null);
   const [phrase, setPhrase] = useState<GesturePhrase | null>(null);
-  const [selectedLabel, setSelectedLabel] = useState<GestureLabel>(initialLabel === 'REST' ? 'FEEL' : initialLabel);
+  const [selectedLabel, setSelectedLabel] = useState<GestureLabel>(toEditableLabel(initialLabel));
   const [text, setText] = useState('');
   const [speakEnabled, setSpeakEnabled] = useState(true);
   const [languageCode, setLanguageCode] = useState('en-US');
@@ -95,8 +101,15 @@ const PhraseEditorScreen = ({ navigation, route }: Props) => {
   };
 
   const resetPhrase = () => {
-    const source = profile?.mode === 'CUSTOM' ? CUSTOM_TRANSLATIONS : DEFAULT_TRANSLATIONS;
-    setText(source[languageCode]?.[selectedLabel] ?? DEFAULT_TRANSLATIONS['en-US'][selectedLabel]);
+    let resetVal = '';
+    const isWordLabel = WORD_GESTURE_LABELS.includes(selectedLabel as WordGestureLabel);
+    if (isWordLabel) {
+      const source = profile?.mode === 'CUSTOM' ? CUSTOM_TRANSLATIONS : DEFAULT_TRANSLATIONS;
+      resetVal = source[languageCode]?.[selectedLabel as WordGestureLabel] ?? DEFAULT_TRANSLATIONS['en-US'][selectedLabel as WordGestureLabel] ?? '';
+    } else {
+      resetVal = ALPHABET_TRANSLATIONS[languageCode]?.[selectedLabel as AlphabetGestureLabel] ?? selectedLabel;
+    }
+    setText(resetVal);
   };
 
   const locked = profile?.isLocked || selectedLabel === 'REST';
